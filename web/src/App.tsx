@@ -6,6 +6,8 @@ import {
   type CSSProperties,
 } from "react";
 import { AgentView } from "./components/agent";
+import { AppShell } from "./components/AppShell";
+import { FinancialDisclaimer } from "./components/FinancialDisclaimer";
 import { ReasoningPanel } from "./components/ReasoningPanel";
 import { StrategyCard } from "./components/StrategyCard";
 import { ViewSidebar } from "./components/ViewSidebar";
@@ -263,6 +265,7 @@ export default function App() {
 
   if (isInputFlow) {
     return (
+      <AppShell>
       <div className="input-phase">
         <div
           className="input-phase-glow"
@@ -322,6 +325,9 @@ export default function App() {
               }}
             >
               Options structuring intelligence
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <FinancialDisclaimer variant="inline" />
             </div>
           </div>
 
@@ -492,11 +498,13 @@ export default function App() {
           )}
         </div>
       </div>
+      </AppShell>
     );
   }
 
   if (isResearching) {
     return (
+      <AppShell>
       <div className="agent-phase-wrapper">
         <header className="agent-phase-header">
           <button
@@ -560,11 +568,13 @@ export default function App() {
           />
         </div>
       </div>
+      </AppShell>
     );
   }
 
   if (phase === "scanning") {
     return (
+      <AppShell>
       <div className="agent-phase-wrapper">
         <header className="agent-phase-header">
           <button
@@ -622,6 +632,7 @@ export default function App() {
           />
         </div>
       </div>
+      </AppShell>
     );
   }
 
@@ -630,6 +641,7 @@ export default function App() {
   }
 
   return (
+    <AppShell>
     <div className="analysis-wrapper">
       <header className="analysis-header" style={analysisStyles.header}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -780,12 +792,14 @@ export default function App() {
                       marginBottom: 16,
                     }}
                   >
+                    <FinancialDisclaimer variant="banner" />
                     <div
                       style={{
                         fontFamily: "var(--serif)",
                         fontSize: 22,
                         fontWeight: 300,
                         color: "var(--text-1)",
+                        marginTop: 16,
                       }}
                     >
                       Ranked Structures
@@ -833,6 +847,7 @@ export default function App() {
         <ReasoningPanel steps={reasoningSteps} visibleCount={visibleSteps} />
       </div>
     </div>
+    </AppShell>
   );
 }
 

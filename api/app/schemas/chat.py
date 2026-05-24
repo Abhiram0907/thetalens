@@ -8,3 +8,6 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     model: str
+    disclaimer: str = Field(
+        default="Not financial advice. For educational and research purposes only."
+    )

@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.agents.thesis_agent import AgentEvent, EventType, ThesisAgent
 from app.config import get_settings
+from app.core.disclaimer import DISCLAIMER_STANDARD
 from app.llm_config import get_llm_config
 from app.tools.registry import PolygonClient
 
@@ -276,4 +277,5 @@ async def _build_strategies(enriched_context: dict) -> dict:
         "parsed_view": view.model_dump(),
         "reasoning_steps": [s.model_dump() for s in steps],
         "underlying_price": view.underlying_price,
+        "disclaimer": DISCLAIMER_STANDARD,
     }

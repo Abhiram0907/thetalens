@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.core.disclaimer import DISCLAIMER_STANDARD
+
 
 class FollowUpOption(BaseModel):
     value: str
@@ -138,3 +140,4 @@ class AnalyzeResponse(BaseModel):
     reasoning_steps: list[ReasoningStep]
     strategies: list[Strategy]
     underlying_price: float
+    disclaimer: str = Field(default=DISCLAIMER_STANDARD)

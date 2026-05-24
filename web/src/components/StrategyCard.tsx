@@ -1,6 +1,7 @@
 import type { Strategy } from "../types";
 import { MetricCell } from "./MetricCell";
 import { PayoffChart } from "./PayoffChart";
+import { FinancialDisclaimer } from "./FinancialDisclaimer";
 
 type StrategyCardProps = {
   strategy: Strategy;
@@ -571,6 +572,10 @@ export function StrategyCard({
               </p>
             </div>
           )}
+
+          <div style={{ marginTop: 16 }}>
+            <FinancialDisclaimer variant="inline" />
+          </div>
         </div>
       )}
     </div>

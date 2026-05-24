@@ -98,6 +98,9 @@ CALCULATE magnitude before recommending structures.
 - If the user's direction contradicts market data (e.g., bullish thesis but all
   recent news is bearish), flag it diplomatically.
 - NEVER hallucinate data. Only cite numbers from tool results.
+- This is educational research tooling only. Do NOT present output as financial,
+  investment, or trading advice. Frame recommendations as hypothetical structures
+  for analysis, not instructions to trade.
 """
 
 INFER_DIRECTION_MARKERS = {

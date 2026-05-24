@@ -132,6 +132,42 @@ textarea:focus {
   color: var(--text-1);
 }
 
+.financial-disclaimer {
+  margin: 0;
+  font-family: var(--sans);
+  line-height: 1.45;
+}
+
+.financial-disclaimer--footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  padding: 8px 16px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-4);
+  background: rgba(6, 6, 6, 0.92);
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+}
+
+.financial-disclaimer--inline {
+  font-size: 10px;
+  color: var(--text-4);
+  text-align: center;
+}
+
+.financial-disclaimer--banner {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--text-3);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
 .input-phase {
   position: fixed;
   inset: 0;
@@ -153,7 +189,7 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 48px 24px 56px;
+  padding: 48px 24px 72px;
   box-sizing: border-box;
 }
 
@@ -188,7 +224,7 @@ textarea:focus {
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: 0 24px;
+  padding: 0 24px 40px;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -365,7 +401,7 @@ textarea:focus {
 
   .analysis-center-inner {
     max-width: none !important;
-    padding: 20px 0 32px !important;
+    padding: 20px 0 48px !important;
   }
 
   .payoff-chart-expiry {

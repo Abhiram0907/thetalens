@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app.core.dependencies import get_trade_chain
+from app.core.disclaimer import DISCLAIMER_STANDARD
 from app.llm_config import get_llm_config
 from app.schemas.chat import ChatRequest, ChatResponse
 
@@ -26,4 +27,4 @@ async def chat(body: ChatRequest) -> ChatResponse:
     except Exception as exc:
         raise HTTPException(status_code=503, detail=cfg.unavailable_detail()) from exc
 
-    return ChatResponse(reply=reply, model=cfg.resolve_model())
+    return ChatResponse(reply=reply, model=cfg.resolve_model(), disclaimer=DISCLAIMER_STANDARD)

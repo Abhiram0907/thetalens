@@ -4,6 +4,7 @@ import {
   type ScannerStock,
   type SeedContext,
 } from "../api/client";
+import { FinancialDisclaimer } from "./FinancialDisclaimer";
 
 type SortKey = "opportunity" | "correlation" | "ivRank" | "beta";
 
@@ -87,6 +88,7 @@ export function ScannerView({
           Ranked by opportunity score &middot; IV rank, earnings, correlation,
           and volatility
         </p>
+        <FinancialDisclaimer variant="inline" />
       </div>
 
       {loading && (

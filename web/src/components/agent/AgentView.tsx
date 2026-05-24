@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { useAgentStream, type AgentBuildPayload } from "../../hooks/useAgentStream";
 import { ReasoningTrace } from "./ReasoningTrace";
 import { IVRankBadge } from "./IVRankBadge";
+import { FinancialDisclaimer } from "../FinancialDisclaimer";
 import type { ThesisRequest } from "../../types/agent";
 import "./ReasoningTrace.css";
 import "./AgentView.css";
@@ -199,10 +200,11 @@ export function AgentView({
             <div className="agent-empty-icon">θ</div>
             <h2>Trade Thesis Agent</h2>
             <p>
-              ThetaLens researches your thesis before recommending structures — IV rank,
+              ThetaLens researches your thesis before suggesting structures — IV rank,
               earnings catalysts, news sentiment, and expected move — then calculates
               magnitude from market data and filters structures to fit the vol regime.
             </p>
+            <FinancialDisclaimer variant="banner" />
             <button
               type="button"
               className="agent-btn agent-btn--primary agent-btn--lg"

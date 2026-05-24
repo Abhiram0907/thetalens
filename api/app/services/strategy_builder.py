@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from datetime import date
 
+from app.core.disclaimer import DISCLAIMER_SHORT
 from app.schemas.analysis import (
     Leg,
     LiquidityProfile,
@@ -497,6 +498,7 @@ def _education_points(name: str, tag: str, metrics: StrategyMetrics) -> list[str
         points.append("Long-vol trade: needs a large move or IV expansion to offset two option premiums.")
     if name:
         points.append("Validate live quotes before entry; stale or modeled mids can overstate expected value.")
+    points.append(DISCLAIMER_SHORT)
     return points
 
 
