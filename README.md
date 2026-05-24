@@ -180,4 +180,4 @@ thetalens/
 
 ## License
 
-Educational / portfolio use. Not financial advice.
+MIT — see [LICENSE](LICENSE). Educational / portfolio use. Not financial advice.
