@@ -1,0 +1,378 @@
+@import "tailwindcss";
+
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #060606;
+  --bg-surface: #0e0e0e;
+  --bg-elevated: #161616;
+  --bg-hover: #1c1c1c;
+  --text-1: #eae6e0;
+  --text-2: #8a857d;
+  --text-3: #5a5650;
+  --text-4: #3a3834;
+  --accent: #c9a655;
+  --accent-dim: rgba(201, 166, 85, 0.1);
+  --positive: #3dd68c;
+  --negative: #ff6b6b;
+  --positive-bg: rgba(61, 214, 140, 0.14);
+  --negative-bg: rgba(255, 107, 107, 0.14);
+  --positive-fill: rgba(61, 214, 140, 0.22);
+  --negative-fill: rgba(255, 107, 107, 0.18);
+  --border: rgba(255, 255, 255, 0.055);
+  --serif: "Cormorant Garamond", Georgia, serif;
+  --sans: "DM Sans", system-ui, sans-serif;
+  --mono: "DM Mono", "SF Mono", monospace;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html {
+  height: 100%;
+  overflow: hidden;
+}
+
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text-1);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar {
+  width: 3px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+textarea:focus {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideRight {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+::selection {
+  background: rgba(201, 166, 85, 0.25);
+  color: var(--text-1);
+}
+
+.input-phase {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  background: var(--bg);
+}
+
+.input-phase-container {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 48px 24px 56px;
+  box-sizing: border-box;
+}
+
+.analysis-wrapper {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  animation: fadeIn 0.6s var(--ease);
+}
+
+.analysis-header {
+  flex-shrink: 0;
+}
+
+.analysis-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.view-sidebar,
+.analysis-reasoning {
+  min-height: 0;
+  max-height: 100%;
+}
+
+.analysis-center {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 24px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.analysis-center-inner {
+  min-width: 0;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.strategy-card {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.strategy-card-chart {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-bottom: 16px;
+}
+
+.strategy-card-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px 16px;
+}
+
+.strategy-card-metrics--compact {
+  gap: 6px 12px;
+}
+
+.payoff-chart-wrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.payoff-chart-expiry {
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+  width: 100%;
+  min-height: 200px;
+}
+
+.payoff-chart-footer {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  margin-top: 8px;
+}
+
+@media (min-width: 768px) {
+  .payoff-chart-expiry {
+    min-height: 240px;
+  }
+}
+
+@media (min-width: 930px) {
+  .analysis-center-inner {
+    max-width: 640px;
+  }
+
+  .payoff-chart-expiry {
+    min-height: 260px;
+  }
+}
+
+/* Narrow / tablet: < 930px — prevent payoff overflow in 3-column layout */
+@media (max-width: 929px) {
+  .analysis-center-inner {
+    max-width: none;
+  }
+
+  .view-sidebar {
+    width: 220px !important;
+    padding: 24px 18px !important;
+  }
+
+  .analysis-reasoning {
+    width: 260px !important;
+    padding: 24px 16px !important;
+  }
+
+}
+
+/* Mobile: < 768px — vertical stack, payoff chart visible */
+@media (max-width: 767px) {
+  .input-phase-container {
+    padding: 40px 16px 48px !important;
+    justify-content: flex-start;
+  }
+
+  .input-phase-glow {
+    width: min(320px, 80vw) !important;
+    height: min(320px, 80vw) !important;
+    top: 8% !important;
+  }
+
+  .input-phase-logo {
+    font-size: 56px !important;
+  }
+
+  .input-phase-title {
+    font-size: 24px !important;
+  }
+
+  .analysis-wrapper {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+  }
+
+  .analysis-header {
+    padding: 0 16px !important;
+    height: 52px !important;
+    gap: 8px;
+  }
+
+  .analysis-header-meta {
+    gap: 10px !important;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .analysis-body {
+    flex-direction: column;
+    overflow: hidden;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .view-sidebar {
+    width: 100% !important;
+    flex-shrink: 0 !important;
+    max-height: none !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border);
+    padding: 20px 16px !important;
+    animation: fadeIn 0.5s var(--ease) both !important;
+    overflow: visible !important;
+  }
+
+  .view-sidebar-ticker {
+    margin-bottom: 20px !important;
+  }
+
+  .view-sidebar-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 20px;
+  }
+
+  .view-sidebar-field {
+    margin-bottom: 0 !important;
+  }
+
+  .analysis-reasoning {
+    display: none !important;
+  }
+
+  .desktop-only {
+    display: none !important;
+  }
+
+  .analysis-center {
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0 16px;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .analysis-center-inner {
+    max-width: none !important;
+    padding: 20px 0 32px !important;
+  }
+
+  .payoff-chart-expiry {
+    min-height: 200px;
+  }
+
+  .strategy-card-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
