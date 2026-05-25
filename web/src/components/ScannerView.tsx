@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import {
   fetchScanner,
   type ScannerStock,
   type SeedContext,
 } from "../api/client";
 import { FinancialDisclaimer } from "./FinancialDisclaimer";
-
-type SortKey = "opportunity" | "correlation" | "ivRank" | "beta";
+import "./ScannerView.css";
 
 type ScannerViewProps = {
   seedTicker: string;
@@ -25,7 +24,6 @@ export function ScannerView({
   const [seedCtx, setSeedCtx] = useState<SeedContext | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<SortKey>("opportunity");
   const [hasAnimated, setHasAnimated] = useState(false);
 
   useEffect(() => {
@@ -55,27 +53,8 @@ export function ScannerView({
     };
   }, [seedTicker]);
 
-  const sorted = useMemo(() => {
-    const arr = [...stocks];
-    switch (sortBy) {
-      case "opportunity":
-        arr.sort((a, b) => b.opportunityScore - a.opportunityScore);
-        break;
-      case "correlation":
-        arr.sort((a, b) => Math.abs(b.correlation) - Math.abs(a.correlation));
-        break;
-      case "ivRank":
-        arr.sort((a, b) => (b.ivRank ?? 0) - (a.ivRank ?? 0));
-        break;
-      case "beta":
-        arr.sort((a, b) => Math.abs(b.beta) - Math.abs(a.beta));
-        break;
-    }
-    return arr;
-  }, [stocks, sortBy]);
-
   return (
-    <div style={styles.container}>
+    <div className="scanner-view">
       <div style={styles.header}>
         <button type="button" onClick={onBack} style={styles.backBtn}>
           &larr; Back
@@ -134,34 +113,8 @@ export function ScannerView({
             <SeedCard seed={seedCtx} accentColor={accentColor} />
           )}
 
-          <div style={styles.sortBar}>
-            <span style={styles.sortLabel}>Sort by</span>
-            {(
-              [
-                ["opportunity", "Opportunity"],
-                ["correlation", "Correlation"],
-                ["ivRank", "IV Rank"],
-                ["beta", "Beta"],
-              ] as [SortKey, string][]
-            ).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setSortBy(key)}
-                style={{
-                  ...styles.sortBtn,
-                  ...(sortBy === key
-                    ? { color: accentColor, borderColor: accentColor }
-                    : {}),
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
           <div style={styles.grid}>
-            {sorted.map((stock, i) => (
+            {stocks.map((stock, i) => (
               <StockCard
                 key={stock.ticker}
                 stock={stock}
@@ -437,13 +390,6 @@ function StatCell({
 /* -------------------------------------------------------------------------- */
 
 const styles: Record<string, CSSProperties> = {
-  container: {
-    maxWidth: 720,
-    margin: "0 auto",
-    padding: "32px 24px",
-    height: "100%",
-    overflowY: "auto",
-  },
   header: { marginBottom: 28 },
   backBtn: {
     background: "none",
@@ -572,33 +518,6 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 14,
     color: "var(--text-2)",
     fontWeight: 500,
-  },
-
-  /* sort bar */
-  sortBar: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 16,
-  },
-  sortLabel: {
-    fontFamily: "var(--mono)",
-    fontSize: 10,
-    color: "var(--text-4)",
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.06em",
-    marginRight: 4,
-  },
-  sortBtn: {
-    background: "none",
-    border: "1px solid var(--border)",
-    borderRadius: 6,
-    padding: "4px 10px",
-    fontSize: 11,
-    fontFamily: "var(--mono)",
-    color: "var(--text-3)",
-    cursor: "pointer",
-    transition: "all 0.2s",
   },
 
   /* grid */

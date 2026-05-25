@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import date
+from typing import Literal
 
 from app.core.disclaimer import DISCLAIMER_SHORT
 from app.schemas.analysis import (
@@ -51,6 +52,10 @@ def parse_risk_budget(risk_budget: str) -> float:
     normalized = parse_risk_budget_text(risk_budget)
     m = re.search(r"[\d,]+", normalized.replace(",", ""))
     return float(m.group(0)) if m else 100_000.0
+
+
+VerdictLevel = Literal["Tradeable", "Caution", "Avoid"]
+_VERDICT_RANK: dict[str, int] = {"Avoid": 0, "Caution": 1, "Tradeable": 2}
 
 
 def _payoff_at_expiry(legs: list[Leg], spot_price: float, at_front: bool = True) -> float:
@@ -549,9 +554,11 @@ def build_strategies(
     iv_regime: str = "Mid",
     earnings_in_window: bool = False,
     avoid_structures: list[str] | None = None,
+    min_verdict: VerdictLevel = "Caution",
+    ignore_risk_cap: bool = False,
 ) -> list[Strategy]:
     target_dte = parse_horizon_days(view.horizon)
-    risk_cap = parse_risk_budget(view.risk_budget)
+    risk_cap = 100_000.0 if ignore_risk_cap else parse_risk_budget(view.risk_budget)
     front, back = select_expiries(snapshot, target_dte)
     spot = snapshot.spot
 
@@ -562,6 +569,7 @@ def build_strategies(
     avoid_structures = avoid_structures or []
     built: list[Strategy] = []
     iv_map = _contracts_iv_map(snapshot)
+    min_rank = _VERDICT_RANK[min_verdict]
 
     for name, tag, spec, critique_base in raw_templates:
         if _structure_avoided(name, avoid_structures):
@@ -611,7 +619,7 @@ def build_strategies(
             earnings_in_window=earnings_in_window,
             warning=warning,
         )
-        if trade_quality.verdict == "Avoid":
+        if _VERDICT_RANK.get(trade_quality.verdict, 0) < min_rank:
             continue
 
         built.append(
@@ -649,3 +657,89 @@ def build_strategies(
         )
         ranked.append(s.model_copy(update={"rank": i, "vs_next": vs_next}))
     return ranked
+
+
+def build_strategies_resilient(
+    view: ParsedView,
+    snapshot: MarketSnapshot,
+    *,
+    iv_regime: str = "Mid",
+    earnings_in_window: bool = False,
+    avoid_structures: list[str] | None = None,
+) -> tuple[list[Strategy], ParsedView, list[str]]:
+    """Build ranked strategies with progressive fallbacks when filters exclude all candidates."""
+    notes: list[str] = []
+    avoid = avoid_structures or []
+    kwargs = {
+        "iv_regime": iv_regime,
+        "earnings_in_window": earnings_in_window,
+    }
+
+    def attempt(
+        candidate: ParsedView,
+        *,
+        avoid_list: list[str] | None = None,
+        ignore_risk_cap: bool = False,
+        min_verdict: VerdictLevel = "Caution",
+    ) -> list[Strategy]:
+        return build_strategies(
+            candidate,
+            snapshot,
+            avoid_structures=avoid_list if avoid_list is not None else avoid,
+            ignore_risk_cap=ignore_risk_cap,
+            min_verdict=min_verdict,
+            **kwargs,
+        )
+
+    strategies = attempt(view)
+    if strategies:
+        return strategies, view, notes
+
+    if avoid:
+        strategies = attempt(view, avoid_list=[])
+        if strategies:
+            notes.append("Structure filters were relaxed to produce candidates.")
+            return strategies, view, notes
+
+    if parse_risk_budget(view.risk_budget) < 100_000.0:
+        relaxed = view.model_copy(update={"risk_budget": "not specified"})
+        strategies = attempt(relaxed, avoid_list=[])
+        if strategies:
+            notes.append(
+                "Stated risk budget excluded every structure; showing best-fit ideas without that cap."
+            )
+            return strategies, relaxed, notes
+
+    if view.direction != "Neutral":
+        neutral = view.model_copy(
+            update={
+                "direction": "Neutral",
+                "direction_icon": "→",
+                "magnitude": "±5% range",
+            }
+        )
+        strategies = attempt(neutral, avoid_list=[])
+        if strategies:
+            notes.append("Direction was relaxed to neutral to match available chain structures.")
+            return strategies, neutral, notes
+
+    strategies = attempt(view, avoid_list=[], ignore_risk_cap=True, min_verdict="Avoid")
+    if strategies:
+        notes.append("Only marginal structures matched; review trade quality and sizing carefully.")
+        return strategies, view, notes
+
+    neutral = view.model_copy(
+        update={
+            "direction": "Neutral",
+            "direction_icon": "→",
+            "magnitude": "±5% range",
+        }
+    )
+    strategies = attempt(neutral, avoid_list=[], ignore_risk_cap=True, min_verdict="Avoid")
+    if strategies:
+        notes.append(
+            "Only marginal neutral structures matched; review trade quality and sizing carefully."
+        )
+        return strategies, neutral, notes
+
+    return [], view, notes

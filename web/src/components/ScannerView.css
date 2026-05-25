@@ -1,0 +1,13 @@
+.scanner-view {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+@media (max-width: 767px) {
+  .scanner-view {
+    padding: 16px 12px;
+  }
+}

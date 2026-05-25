@@ -1,4 +1,5 @@
 import type { ParsedView } from "../types";
+import "./ViewSidebar.css";
 
 type ViewSidebarProps = {
   view: ParsedView;
@@ -11,128 +12,87 @@ export function ViewSidebar({ view, accentColor }: ViewSidebarProps) {
     { label: "Magnitude", value: view.magnitude },
     { label: "Horizon", value: `${view.horizon} (${view.horizonLabel})` },
     { label: "Vol View", value: view.volatilityView },
-    { label: "Risk Budget", value: view.riskBudget === "not specified" ? "No limit" : view.riskBudget },
+    {
+      label: "Risk Budget",
+      value: view.riskBudget === "not specified" ? "No limit" : view.riskBudget,
+    },
   ];
 
+  const riskLabel =
+    view.riskBudget === "not specified" ? "No limit" : view.riskBudget;
+
   return (
-    <div
-      className="view-sidebar"
-      style={{
-        width: 260,
-        flexShrink: 0,
-        padding: "28px 24px",
-        borderRight: "1px solid var(--border)",
-        overflow: "auto",
-        animation: "slideRight 0.7s var(--ease) both",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 11,
-          fontFamily: "var(--mono)",
-          color: "var(--text-3)",
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
-          marginBottom: 6,
-        }}
-      >
-        Parsed View
-      </div>
-      <div
-        className="view-sidebar-ticker"
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          gap: 10,
-          marginBottom: 28,
-        }}
-      >
-        <span
-          style={{
-            fontFamily: "var(--serif)",
-            fontSize: 32,
-            fontWeight: 300,
-            color: accentColor,
-          }}
-        >
-          {view.underlying}
-        </span>
-        <span
-          style={{
-            fontFamily: "var(--mono)",
-            fontSize: 14,
-            color: "var(--text-2)",
-          }}
-        >
-          ${view.underlyingPrice}
-        </span>
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          marginBottom: 24,
-          padding: "8px 12px",
-          background: "var(--accent-dim)",
-          borderRadius: 8,
-        }}
-      >
-        <span
-          style={{
-            fontFamily: "var(--mono)",
-            fontSize: 11,
-            color: accentColor,
-          }}
-        >
-          IV Rank
-        </span>
-        <span
-          style={{
-            fontFamily: "var(--mono)",
-            fontSize: 13,
-            color: "var(--text-1)",
-            fontWeight: 500,
-          }}
-        >
-          {view.ivRank}
-        </span>
-        <span style={{ fontSize: 11, color: "var(--text-3)" }}>
-          {view.ivLabel}
-        </span>
-      </div>
-
-      <div className="view-sidebar-fields">
-      {fields.map((f, i) => (
-        <div
-          key={f.label}
-          className="view-sidebar-field"
-          style={{
-            marginBottom: 18,
-            animation: `slideUp 0.5s var(--ease) ${0.3 + i * 0.08}s both`,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 10,
-              fontFamily: "var(--mono)",
-              color: "var(--text-3)",
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              marginBottom: 4,
-            }}
-          >
-            {f.label}
-          </div>
-          <div style={{ fontSize: 15, color: "var(--text-1)", fontWeight: 400 }}>
-            {"icon" in f && f.icon && (
-              <span style={{ color: "#c4534a", marginRight: 6 }}>{f.icon}</span>
-            )}
-            {f.value}
-          </div>
+    <div className="view-sidebar">
+      <div className="view-sidebar-compact">
+        <div className="view-sidebar-compact__row">
+          <span className="view-sidebar-compact__ticker" style={{ color: accentColor }}>
+            {view.underlying}
+          </span>
+          <span className="view-sidebar-compact__price">${view.underlyingPrice}</span>
+          <span className="view-sidebar-compact__iv" style={{ color: accentColor }}>
+            IV {view.ivRank} {view.ivLabel}
+          </span>
         </div>
-      ))}
+        <div className="view-sidebar-compact__meta">
+          <span className="view-sidebar-compact__chip">
+            <span className="view-sidebar-compact__chip-label">Dir</span>
+            <span style={{ color: "#c4534a" }}>{view.directionIcon}</span> {view.direction}
+          </span>
+          <span className="view-sidebar-compact__chip">
+            <span className="view-sidebar-compact__chip-label">Move</span>
+            {view.magnitude}
+          </span>
+          <span className="view-sidebar-compact__chip">
+            <span className="view-sidebar-compact__chip-label">Horizon</span>
+            {view.horizon}
+          </span>
+          <span className="view-sidebar-compact__chip">
+            <span className="view-sidebar-compact__chip-label">Vol</span>
+            {view.volatilityView}
+          </span>
+          <span className="view-sidebar-compact__chip">
+            <span className="view-sidebar-compact__chip-label">Risk</span>
+            {riskLabel}
+          </span>
+        </div>
+      </div>
+
+      <div className="view-sidebar-full">
+        <div className="view-sidebar-label">Parsed View</div>
+        <div className="view-sidebar-ticker">
+          <span className="view-sidebar-ticker-symbol" style={{ color: accentColor }}>
+            {view.underlying}
+          </span>
+          <span className="view-sidebar-ticker-price">${view.underlyingPrice}</span>
+        </div>
+
+        <div className="view-sidebar-iv">
+          <span className="view-sidebar-iv-label" style={{ color: accentColor }}>
+            IV Rank
+          </span>
+          <span className="view-sidebar-iv-value">{view.ivRank}</span>
+          <span className="view-sidebar-iv-regime">{view.ivLabel}</span>
+        </div>
+
+        <div className="view-sidebar-fields">
+          {fields.map((f, i) => (
+            <div
+              key={f.label}
+              className="view-sidebar-field"
+              style={{
+                animation: `slideUp 0.5s var(--ease) ${0.3 + i * 0.08}s both`,
+              }}
+            >
+              <div className="view-sidebar-field-label">{f.label}</div>
+              <div className="view-sidebar-field-value">
+                {"icon" in f && f.icon && (
+                  <span className="view-sidebar-field-icon">{f.icon}</span>
+                )}
+                {f.value}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

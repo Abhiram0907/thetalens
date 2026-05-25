@@ -314,3 +314,37 @@
   background: rgba(255, 255, 255, 0.06);
   border-radius: 3px;
 }
+
+@media (max-width: 768px) {
+  .reasoning-trace {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .rt-header {
+    padding: 8px 12px;
+  }
+
+  .rt-header-title {
+    font-size: 12px;
+  }
+
+  .rt-events {
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .rt-event {
+    padding: 8px 10px;
+  }
+
+  .rt-reasoning-text {
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  .rt-highlights {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 4px;
+  }
+}

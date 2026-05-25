@@ -193,7 +193,7 @@ async def _build_strategies(enriched_context: dict) -> dict:
     from app.schemas.analysis import ParsedView
     from app.services.market_data import estimate_iv_rank
     from app.services.reasoning import build_agent_research_reasoning_steps
-    from app.services.strategy_builder import build_strategies, parse_horizon_days
+    from app.services.strategy_builder import build_strategies_resilient, parse_horizon_days
 
     ticker = enriched_context.get("ticker", "SPY").upper()
     direction_raw = str(enriched_context.get("direction", "neutral")).lower()
@@ -254,48 +254,37 @@ async def _build_strategies(enriched_context: dict) -> dict:
         iv_label=iv_label,
     )
 
-    strategies = build_strategies(
+    strategies, view, build_notes = build_strategies_resilient(
         view,
         snapshot,
         iv_regime=iv_regime,
         earnings_in_window=earnings_data.get("earnings_in_trade_window", False),
         avoid_structures=avoid,
     )
-    if not strategies and avoid:
-        strategies = build_strategies(
-            view,
-            snapshot,
-            iv_regime=iv_regime,
-            earnings_in_window=earnings_data.get("earnings_in_trade_window", False),
-            avoid_structures=[],
-        )
-    if not strategies and direction != "Neutral":
-        neutral_view = view.model_copy(
-            update={
-                "direction": "Neutral",
-                "direction_icon": "→",
-                "magnitude": "±5% range",
-            }
-        )
-        strategies = build_strategies(
-            neutral_view,
-            snapshot,
-            iv_regime=iv_regime,
-            earnings_in_window=earnings_data.get("earnings_in_trade_window", False),
-            avoid_structures=[],
-        )
-        if strategies:
-            view = neutral_view
 
     if not strategies:
         raise HTTPException(
             status_code=503,
-            detail=f"Could not build strategies for {ticker} from chain data.",
+            detail=(
+                f"Could not build strategies for {ticker} from chain data. "
+                "Try widening the horizon, relaxing risk budget, or a more liquid ticker."
+            ),
         )
 
     steps = build_agent_research_reasoning_steps(
         enriched_context, view, snapshot, strategies, target_dte=target_dte
     )
+    if build_notes:
+        from app.schemas.analysis import ReasoningStep
+
+        steps = [
+            ReasoningStep(
+                node="builder",
+                message=" ".join(build_notes),
+                delay=steps[-1].delay if steps else 0,
+            ),
+            *steps,
+        ]
 
     return {
         "strategies": [s.model_dump() for s in strategies],
