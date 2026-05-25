@@ -126,8 +126,8 @@ Quick checklist:
 
 1. Deploy `api/` on Render (use [`render.yaml`](render.yaml) Blueprint or manual web service).
 2. Deploy `web/` on Vercel with **Root Directory** = `web`.
-3. Set `VITE_API_BASE` on Vercel → your Render API URL.
-4. Set `CORS_ORIGINS` on Render → your Vercel URL.
+3. Set `VITE_API_BASE` on Vercel → `https://thetalens-api.onrender.com` (or use `web/.env.production` in repo).
+4. Set `CORS_ORIGINS` on Render → `https://thetalens.app,https://www.thetalens.app` (default in `render.yaml`).
 
 ## Tests
 

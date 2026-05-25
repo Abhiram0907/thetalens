@@ -22,7 +22,7 @@ The frontend calls the API directly via `VITE_API_BASE` (required in production 
    - `GOOGLE_API_KEY` — [Google AI Studio](https://aistudio.google.com/apikey)
    - `POLYGON_API_KEY` — [Polygon.io](https://polygon.io/)
    - `FINNHUB_API_KEY` — [Finnhub](https://finnhub.io/) (optional but recommended)
-   - `CORS_ORIGINS` — your Vercel URL, e.g. `https://thetalens.vercel.app` (add preview URL later if needed)
+   - `CORS_ORIGINS` — `https://thetalens.app,https://www.thetalens.app` (already set in `render.yaml`)
 
 5. Wait for deploy; note the service URL, e.g. `https://thetalens-api.onrender.com`.
 6. Verify: `curl https://thetalens-api.onrender.com/health` → `{"status":"ok"}`.
@@ -67,9 +67,80 @@ Preview Vercel deploys (`*.vercel.app`) are allowed automatically when `CORS_ORI
 
 6. If you get CORS errors, add your exact Vercel URL to Render `CORS_ORIGINS` and redeploy the API.
 
-### Vercel preview deploys
+### Preview vs Production (Vercel)
+
+Vercel has two deployment environments:
+
+| Environment | When it deploys | Typical URL |
+|---|---|---|
+| **Production** | Push/merge to `main` (or your production branch), or `vercel --prod` | `https://thetalens.app` |
+| **Preview** | Push to any other branch, open a PR, or `vercel` (no `--prod`) | Auto-generated `*.vercel.app` |
+
+Each preview gets two URL types:
+
+- **Branch URL** — always the latest commit on that branch (e.g. `thetalens-git-feature-abc.vercel.app`)
+- **Commit URL** — pinned to one deployment (e.g. `thetalens-abc123.vercel.app`)
+
+PR comments and the Vercel dashboard link to these automatically.
+
+#### Env vars per environment
+
+In **Project → Settings → Environment Variables**, scope `VITE_API_BASE`:
+
+| Variable | Production | Preview | Development |
+|---|---|---|---|
+| `VITE_API_BASE` | ✅ same Render API URL | ✅ same Render API URL (recommended) | leave unset locally |
+
+`VITE_*` values are **baked in at build time** — changing an env var requires a redeploy for that environment.
+
+**Recommended setup:** enable `VITE_API_BASE` for both **Production** and **Preview**, both pointing at your Render API. You usually do not need a separate staging API unless you want one.
+
+#### CORS for previews
+
+On Render, set `CORS_ORIGINS` to your **production** frontend origins only:
+
+```
+https://thetalens.app,https://www.thetalens.app
+```
+
+Preview `*.vercel.app` URLs are already allowed by the API when `CORS_ORIGINS` is set (see `api/app/main.py`). You do **not** need to add every preview URL manually.
+
+#### Workflow
+
+1. Open a PR → Vercel builds a **Preview** → test against live Render API.
+2. Merge to `main` → Vercel builds **Production** → live site updates.
+3. Custom domain always serves **Production** only (not previews).
+
+### Vercel preview deploys (summary)
 
 Each preview gets a unique `*.vercel.app` URL. The API allows those origins when `CORS_ORIGINS` is configured — no extra step per preview.
+
+### Custom domain (thetalens.app)
+
+1. In Vercel: **Project → Settings → Domains** → add your domain.
+2. At your DNS provider (Cloudflare, Namecheap, Route 53, etc.), add the records Vercel shows. For the **root domain** (`@`), Vercel currently recommends:
+
+   | Type | Name | Value |
+   |---|---|---|
+   | A | `@` | `216.198.79.1` |
+
+   Older Vercel IPs (`76.76.21.21`) and `cname.vercel-dns.com` still work; use whatever Vercel displays for your project.
+
+3. If you also want `www`, Vercel will show a **CNAME** for `www` → `cname.vercel-dns.com` (or the new equivalent). Add that at your DNS provider too.
+
+4. Wait for DNS propagation (minutes to 48 hours). Vercel shows **Valid Configuration** when ready.
+
+5. **Update Render `CORS_ORIGINS`** to include your custom domain (comma-separated, no trailing slash):
+
+   ```
+   https://thetalens.app,https://www.thetalens.app
+   ```
+
+   Redeploy the API after changing env vars.
+
+6. No change to `VITE_API_BASE` — that still points at your Render API URL, not your custom frontend domain.
+
+**Cloudflare tip:** If the domain is proxied (orange cloud), SSL mode **Full** is usually fine. If verification stalls, try DNS-only (grey cloud) until Vercel validates, then re-enable proxy.
 
 ---
 
@@ -89,11 +160,12 @@ Vercel URL      ──►  Render CORS_ORIGINS
 
 ## 4. Local vs production
 
-| | Local | Production |
-|---|---|---|
-| `VITE_API_BASE` | unset | Render API URL |
-| API CORS | localhost:5173 (built-in) | `CORS_ORIGINS` env var |
-| API proxy | Vite dev server | Direct fetch to Render |
+| | Local | Preview (Vercel) | Production (Vercel) |
+|---|---|---|---|
+| Trigger | `npm run dev` | PR / non-`main` push | Merge to `main` |
+| Frontend URL | localhost:5173 | `*.vercel.app` | `https://thetalens.app` |
+| `VITE_API_BASE` | unset | Render API URL | Render API URL |
+| API CORS | localhost (built-in) | `*.vercel.app` regex | `CORS_ORIGINS` + regex |
 
 ---
 
