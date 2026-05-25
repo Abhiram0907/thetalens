@@ -15,7 +15,6 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-import traceback
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, AsyncIterator
@@ -171,19 +170,33 @@ def _infer_direction_from_context(enriched_context: dict[str, Any]) -> tuple[str
     return "neutral", "directional evidence is mixed, so the agent is using a neutral/volatility view"
 
 
-def _format_llm_error(exc: Exception) -> str:
-    """Produce a useful error string — bare exceptions like ReadTimeout are often empty."""
+def _format_llm_error_internal(exc: Exception) -> str:
+    """Detailed error for server logs only."""
     import httpx
+
+    from app.core.security import redact_secrets
 
     if isinstance(exc, httpx.HTTPStatusError):
         detail = exc.response.text[:500] if exc.response is not None else ""
-        return f"HTTP {exc.response.status_code}: {detail or exc.response.reason_phrase}"
+        msg = f"HTTP {exc.response.status_code}: {detail or exc.response.reason_phrase}"
+        return redact_secrets(msg)
     if isinstance(exc, httpx.TimeoutException):
-        return "Request timed out — try again or set AGENT_MODEL=gemma-4-26b-a4b-it in api/.env"
+        return "Request timed out"
     msg = str(exc).strip()
     if msg:
-        return msg
+        return redact_secrets(msg)
     return f"{type(exc).__name__} (no details)"
+
+
+def _format_llm_error_client(exc: Exception) -> str:
+    """Generic message for SSE clients."""
+    from app.core.security import LLM_UNAVAILABLE
+
+    import httpx
+
+    if isinstance(exc, (httpx.HTTPError, RuntimeError)):
+        return LLM_UNAVAILABLE
+    return LLM_UNAVAILABLE
 
 
 def _coerce_tool_arguments(name: str, arguments: dict) -> dict:
@@ -324,17 +337,18 @@ class ThesisAgent:
 
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{self.model}:generateContent?key={self.api_key}"
+            f"{self.model}:generateContent"
         )
+        headers = {"x-goog-api-key": self.api_key or ""}
 
         async with httpx.AsyncClient(timeout=90) as client:
             try:
-                resp = await client.post(url, json=body)
+                resp = await client.post(url, json=body, headers=headers)
                 resp.raise_for_status()
             except httpx.HTTPStatusError as exc:
-                raise RuntimeError(_format_llm_error(exc)) from exc
+                raise RuntimeError(_format_llm_error_internal(exc)) from exc
             except httpx.TimeoutException as exc:
-                raise RuntimeError(_format_llm_error(exc)) from exc
+                raise RuntimeError(_format_llm_error_internal(exc)) from exc
             data = resp.json()
 
         # Surface API-level errors (e.g. blocked, quota)
@@ -406,16 +420,22 @@ class ThesisAgent:
     # ------------------------------------------------------------------
 
     async def _execute_tool(self, name: str, arguments: dict) -> dict:
+        import logging
+
+        from app.core.security import sanitize_tool_result
+
+        logger = logging.getLogger("thetalens.agent")
         tool_spec = get_tool(name)
         if not tool_spec:
-            return {"error": f"Unknown tool: {name}"}
+            return {"error": "Unknown tool"}
 
         try:
             coerced = _coerce_tool_arguments(name, arguments)
             result = await tool_spec.fn(**coerced, polygon_client=self.polygon)
-            return result
+            return sanitize_tool_result(result)
         except Exception as e:
-            return {"error": str(e), "traceback": traceback.format_exc()[-500:]}
+            logger.exception("Tool %s failed", name)
+            return sanitize_tool_result({"error": "Tool execution failed"})
 
     # ------------------------------------------------------------------
     # Main agent loop
@@ -474,7 +494,7 @@ class ThesisAgent:
             except Exception as e:
                 yield AgentEvent(
                     type=EventType.ERROR,
-                    data={"message": f"LLM call failed: {_format_llm_error(e)}", "step": step},
+                    data={"message": _format_llm_error_client(e), "step": step},
                 )
                 break
 

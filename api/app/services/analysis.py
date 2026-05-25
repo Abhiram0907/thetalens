@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 
 from app.core.dependencies import get_intent_chain
+from app.core.security import UPSTREAM_UNAVAILABLE
 from app.schemas.analysis import AnalyzeResponse
 from app.services.field_parser import parse_magnitude_text, parse_risk_budget_text
 from app.services.market_data import MarketDataError, estimate_iv_rank, get_polygon_client
@@ -43,7 +44,7 @@ async def run_analysis(query: str) -> AnalyzeResponse:
         client = get_polygon_client()
         snapshot = await client.load_snapshot(view.underlying, target_dte)
     except MarketDataError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail=UPSTREAM_UNAVAILABLE) from exc
 
     iv_rank, iv_label = estimate_iv_rank(snapshot.contracts, snapshot.spot)
     view = view.model_copy(

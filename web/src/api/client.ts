@@ -1,5 +1,6 @@
 import type { FollowUpQuestion } from "../lib/evaluateIntent";
 import { API_BASE } from "../lib/apiBase";
+import { userFacingApiError } from "../lib/safeErrors";
 import type { ParsedView, ReasoningStep, Strategy } from "../types";
 
 export class ApiError extends Error {
@@ -153,14 +154,14 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   });
 
   if (!res.ok) {
-    let detail = res.statusText;
+    let detail: string | undefined;
     try {
       const err = (await res.json()) as { detail?: string };
       if (typeof err.detail === "string") detail = err.detail;
     } catch {
       /* ignore */
     }
-    throw new ApiError(detail, res.status);
+    throw new ApiError(userFacingApiError(res.status, detail), res.status);
   }
 
   return res.json() as Promise<T>;
