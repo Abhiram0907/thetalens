@@ -44,9 +44,15 @@ def create_app() -> FastAPI:
             o.strip() for o in settings.cors_origins.split(",") if o.strip()
         )
 
+    # When CORS_ORIGINS is set (production), also allow Vercel preview deploys.
+    allow_origin_regex = (
+        r"https://.*\.vercel\.app" if settings.cors_origins else None
+    )
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
+        allow_origin_regex=allow_origin_regex,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

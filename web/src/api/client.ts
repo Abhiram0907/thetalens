@@ -1,4 +1,5 @@
 import type { FollowUpQuestion } from "../lib/evaluateIntent";
+import { API_BASE } from "../lib/apiBase";
 import type { ParsedView, ReasoningStep, Strategy } from "../types";
 
 export class ApiError extends Error {
@@ -143,8 +144,6 @@ export type AnalyzeResult = {
   strategies: Omit<Strategy, "payoffData">[];
   underlyingPrice: number;
 };
-
-const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {

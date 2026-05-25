@@ -118,6 +118,17 @@ npm run dev
 
 Open http://localhost:5173 — Vite proxies `/api` to port 8000.
 
+## Deploy
+
+Production setup: **Render** (API) + **Vercel** (web). Full steps in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+Quick checklist:
+
+1. Deploy `api/` on Render (use [`render.yaml`](render.yaml) Blueprint or manual web service).
+2. Deploy `web/` on Vercel with **Root Directory** = `web`.
+3. Set `VITE_API_BASE` on Vercel → your Render API URL.
+4. Set `CORS_ORIGINS` on Render → your Vercel URL.
+
 ## Tests
 
 ```bash
@@ -175,6 +186,7 @@ thetalens/
 │   └── src/                 # React UI
 └── docs/
     ├── ARCHITECTURE.md
+    ├── DEPLOYMENT.md
     └── EVAL.md
 ```
 

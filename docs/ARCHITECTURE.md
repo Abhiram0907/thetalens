@@ -184,4 +184,4 @@ SSE handled by `useAgentStream` hook; reasoning trace in `ReasoningTrace.tsx`.
 - **Frontend:** Static build from `web/` (Vercel, Netlify, etc.)
 - **API:** `uvicorn app.main:app` on Railway, Fly.io, Render, etc.
 - Set `CORS_ORIGINS` to your frontend URL in production.
-- Proxy `/api` from frontend or set `VITE_API_BASE` to the API URL.
+- Set `VITE_API_BASE` on Vercel to the Render API URL (see [DEPLOYMENT.md](DEPLOYMENT.md)).

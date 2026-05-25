@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { API_BASE } from "../lib/apiBase";
 import type {
   AgentEvent,
   ContextData,
@@ -53,7 +54,7 @@ const INITIAL_STATE: AgentStreamState = {
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useAgentStream(apiBase = "") {
+export function useAgentStream(apiBase = API_BASE) {
   const [state, setState] = useState<AgentStreamState>(INITIAL_STATE);
   const abortRef = useRef<AbortController | null>(null);
 

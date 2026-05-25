@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { API_BASE } from "../../lib/apiBase";
 import { useAgentStream, type AgentBuildPayload } from "../../hooks/useAgentStream";
 import { ReasoningTrace } from "./ReasoningTrace";
 import { IVRankBadge } from "./IVRankBadge";
@@ -32,7 +33,7 @@ export function AgentView({
   parsedIntent,
   onComplete,
   onBack,
-  apiBase = "",
+  apiBase = API_BASE,
   accentColor = "var(--accent)",
 }: AgentViewProps) {
   const agent = useAgentStream(apiBase);
