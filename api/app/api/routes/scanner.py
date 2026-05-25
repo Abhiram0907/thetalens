@@ -1,8 +1,8 @@
 """Scanner endpoint: find stocks with similar movement to a seed ticker."""
 
-from __future__ import annotations
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Body, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
@@ -33,7 +33,10 @@ def _get_polygon_client() -> PolygonClient:
 
 @router.post("", response_model=ScannerResponse)
 @limiter.limit("20/minute")
-async def scan_stocks(request: Request, req: ScannerRequest):
+async def scan_stocks(
+    request: Request,
+    req: Annotated[ScannerRequest, Body()],
+):
     ticker = req.ticker.upper().strip()
     polygon = _get_polygon_client()
     settings = get_settings()

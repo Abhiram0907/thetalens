@@ -1,10 +1,8 @@
 """SSE streaming endpoints for the Trade Thesis Agent."""
 
-from __future__ import annotations
+from typing import Annotated, AsyncIterator
 
-from typing import AsyncIterator
-
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -105,7 +103,10 @@ def _extract_ticker(query: str) -> str:
 
 @router.post("/stream")
 @limiter.limit("8/minute")
-async def stream_thesis(request: Request, req: ThesisRequest):
+async def stream_thesis(
+    request: Request,
+    req: Annotated[ThesisRequest, Body()],
+):
     polygon = _get_polygon_client()
     agent = _get_agent(polygon)
     intent = _build_intent(req)
@@ -159,7 +160,10 @@ async def stream_thesis(request: Request, req: ThesisRequest):
 
 @router.post("/run", response_model=ThesisResult)
 @limiter.limit("4/minute")
-async def run_thesis(request: Request, req: ThesisRequest):
+async def run_thesis(
+    request: Request,
+    req: Annotated[ThesisRequest, Body()],
+):
     settings = get_settings()
     if settings.is_production:
         raise HTTPException(status_code=404, detail="Not found")

@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException, Request
+from typing import Annotated
+
+from fastapi import APIRouter, Body, HTTPException, Request
 
 from app.config import get_settings
 from app.core.security import LLM_UNAVAILABLE
@@ -13,7 +15,10 @@ router = APIRouter(prefix="/api", tags=["analysis"])
 
 @router.post("/intent", response_model=IntentResponse)
 @limiter.limit("30/minute")
-async def parse_intent(request: Request, body: IntentRequest) -> IntentResponse:
+async def parse_intent(
+    request: Request,
+    body: Annotated[IntentRequest, Body()],
+) -> IntentResponse:
     cfg = get_llm_config()
     settings = get_settings()
     try:
@@ -27,5 +32,8 @@ async def parse_intent(request: Request, body: IntentRequest) -> IntentResponse:
 
 @router.post("/analyze", response_model=AnalyzeResponse)
 @limiter.limit("20/minute")
-async def analyze(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
+async def analyze(
+    request: Request,
+    body: Annotated[AnalyzeRequest, Body()],
+) -> AnalyzeResponse:
     return await run_analysis(body.query)

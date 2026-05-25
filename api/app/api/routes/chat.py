@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException, Request
+from typing import Annotated
+
+from fastapi import APIRouter, Body, HTTPException, Request
 
 from app.config import get_settings
 from app.core.dependencies import get_trade_chain
@@ -13,7 +15,10 @@ router = APIRouter(prefix="/api", tags=["chat"])
 
 @router.post("/chat", response_model=ChatResponse)
 @limiter.limit("30/minute")
-async def chat(request: Request, body: ChatRequest) -> ChatResponse:
+async def chat(
+    request: Request,
+    body: Annotated[ChatRequest, Body()],
+) -> ChatResponse:
     cfg = get_llm_config()
     settings = get_settings()
 
