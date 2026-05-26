@@ -15,7 +15,15 @@ web/node_modules/
 web/dist/
 web/.env
 web/.env.local
+web/.env.production
+web/.env.*.local
 web/tsconfig.tsbuildinfo
+
+# Secrets & credentials
+*.pem
+*.key
+credentials.json
+.secrets/
 
 # OS / IDE
 .DS_Store

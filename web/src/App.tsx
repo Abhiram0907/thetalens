@@ -24,6 +24,7 @@ import { ScannerView } from "./components/ScannerView";
 import type { AgentBuildPayload } from "./hooks/useAgentStream";
 import { DEMO_QUERY, VAGUE_DEMO_QUERY, SCANNER_DEMO_QUERY } from "./data/mockData";
 import { enrichStrategies } from "./lib/enrichStrategies";
+import { userFacingNetworkError } from "./lib/safeErrors";
 import type { ParsedView, ReasoningStep, Strategy } from "./types";
 
 const ACCENT_COLOR = "#c9a655";
@@ -110,9 +111,7 @@ export default function App() {
         revealStrategies(enriched, result.reasoningSteps);
       } catch (err) {
         const message =
-          err instanceof ApiError
-            ? err.message
-            : "Could not reach the API. Start the backend with: cd api && uvicorn app.main:app --reload";
+          err instanceof ApiError ? err.message : userFacingNetworkError();
         setError(message);
         setPhase("input");
       }
@@ -146,9 +145,7 @@ export default function App() {
         }
       } catch (err) {
         const message =
-          err instanceof ApiError
-            ? err.message
-            : "Could not reach the API. Start the backend with: cd api && uvicorn app.main:app --reload";
+          err instanceof ApiError ? err.message : userFacingNetworkError();
         setError(message);
         setPhase("input");
       }

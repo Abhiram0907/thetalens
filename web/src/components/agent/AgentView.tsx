@@ -70,56 +70,89 @@ export function AgentView({
     agent.context?.calculate_magnitude?.magnitude;
 
   return (
-    <div className="agent-view">
+    <div className={`agent-view${hasStarted ? " agent-view--active" : ""}`}>
       <div className="agent-view__sidebar">
         <div className="agent-sidebar-card">
-          <h3 className="agent-sidebar-title">Trade Thesis</h3>
-          {parsedIntent && (
-            <div className="agent-thesis-fields">
-              <div className="agent-thesis-field">
-                <span className="agent-field-label">Underlying</span>
-                <span className="agent-field-value agent-field-ticker">
-                  {parsedIntent.underlying ?? "—"}
-                </span>
-              </div>
-              <div className="agent-thesis-field">
-                <span className="agent-field-label">Direction</span>
-                <span className={`agent-field-value agent-direction-${dir || "neutral"}`}>
-                  {dir === "bullish" && "↑ "}
-                  {dir === "bearish" && "↓ "}
-                  {parsedIntent.direction ?? "—"}
-                </span>
-              </div>
-              <div className="agent-thesis-field">
-                <span className="agent-field-label">Horizon</span>
-                <span className="agent-field-value">{parsedIntent.horizon ?? "—"}</span>
-              </div>
-              <div className="agent-thesis-field">
-                <span className="agent-field-label">Risk Budget</span>
-                <span className="agent-field-value">{parsedIntent.risk_budget ?? "—"}</span>
-              </div>
-
-              {calculatedMagnitude && (
-                <div className="agent-thesis-field agent-thesis-field--full">
-                  <span className="agent-field-label">Calculated Magnitude</span>
-                  <span className="agent-field-value" style={{ color: "var(--accent)" }}>
-                    {calculatedMagnitude}
-                  </span>
-                </div>
-              )}
-
-              {ivRank && !ivRank.error && (
-                <div className="agent-thesis-field agent-thesis-field--full">
+          <div className={`agent-thesis-compact${hasStarted ? "" : " agent-thesis-compact--hidden"}`}>
+            <div className="agent-thesis-compact__primary">
+              <span className="agent-thesis-compact__ticker">
+                {parsedIntent?.underlying ?? "—"}
+              </span>
+              <span className={`agent-thesis-compact__dir agent-direction-${dir || "neutral"}`}>
+                {dir === "bullish" && "↑ "}
+                {dir === "bearish" && "↓ "}
+                {parsedIntent?.direction ?? "—"}
+              </span>
+              <span className="agent-thesis-compact__meta">
+                {parsedIntent?.horizon ?? "—"}
+              </span>
+            </div>
+            {(calculatedMagnitude || (ivRank && !ivRank.error)) && (
+              <div className="agent-thesis-compact__chips">
+                {calculatedMagnitude && (
+                  <span className="agent-thesis-compact__chip">{calculatedMagnitude}</span>
+                )}
+                {ivRank && !ivRank.error && (
                   <IVRankBadge
                     rank={ivRank.iv_rank}
                     regime={ivRank.regime}
                     rv={ivRank.current_rv_30d}
                   />
-                </div>
-              )}
-            </div>
-          )}
+                )}
+              </div>
+            )}
+          </div>
 
+          <div className={`agent-thesis-full${hasStarted ? " agent-thesis-full--collapsed" : ""}`}>
+            <h3 className="agent-sidebar-title">Trade Thesis</h3>
+            {parsedIntent && (
+              <div className="agent-thesis-fields">
+                <div className="agent-thesis-field">
+                  <span className="agent-field-label">Underlying</span>
+                  <span className="agent-field-value agent-field-ticker">
+                    {parsedIntent.underlying ?? "—"}
+                  </span>
+                </div>
+                <div className="agent-thesis-field">
+                  <span className="agent-field-label">Direction</span>
+                  <span className={`agent-field-value agent-direction-${dir || "neutral"}`}>
+                    {dir === "bullish" && "↑ "}
+                    {dir === "bearish" && "↓ "}
+                    {parsedIntent.direction ?? "—"}
+                  </span>
+                </div>
+                <div className="agent-thesis-field">
+                  <span className="agent-field-label">Horizon</span>
+                  <span className="agent-field-value">{parsedIntent.horizon ?? "—"}</span>
+                </div>
+                <div className="agent-thesis-field">
+                  <span className="agent-field-label">Risk Budget</span>
+                  <span className="agent-field-value">{parsedIntent.risk_budget ?? "—"}</span>
+                </div>
+
+                {calculatedMagnitude && (
+                  <div className="agent-thesis-field agent-thesis-field--full">
+                    <span className="agent-field-label">Calculated Magnitude</span>
+                    <span className="agent-field-value" style={{ color: "var(--accent)" }}>
+                      {calculatedMagnitude}
+                    </span>
+                  </div>
+                )}
+
+                {ivRank && !ivRank.error && (
+                  <div className="agent-thesis-field agent-thesis-field--full">
+                    <IVRankBadge
+                      rank={ivRank.iv_rank}
+                      regime={ivRank.regime}
+                      rv={ivRank.current_rv_30d}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="agent-context-extras">
           {agent.context?.get_upcoming_earnings?.earnings_in_trade_window && (
             <div className="agent-earnings-alert">
               <span className="agent-earnings-alert-icon">⚠</span>
@@ -151,6 +184,7 @@ export function AgentView({
               </span>
             </div>
           )}
+          </div>
         </div>
 
         <div className="agent-sidebar-actions">

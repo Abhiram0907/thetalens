@@ -26,6 +26,32 @@ type PayoffChartProps = {
 };
 
 const MARGIN = { top: 20, right: 16, bottom: 36, left: 52 };
+const MARGIN_MOBILE = { top: 14, right: 8, bottom: 28, left: 38 };
+
+function clipPayoffForDisplay(
+  data: PayoffPoint[],
+  currentPrice: number,
+  tight: boolean,
+): PayoffPoint[] {
+  if (!tight || data.length < 3) return data;
+
+  const prices = data.map((d) => d.price);
+  const minP = Math.min(...prices);
+  const maxP = Math.max(...prices);
+  const fullSpan = maxP - minP || 1;
+
+  // Mobile: show ~45% of the full range, centered on spot (tighter x-axis).
+  const halfSpan = Math.max(
+    fullSpan * 0.225,
+    currentPrice * 0.1,
+    6,
+  );
+  const lo = currentPrice - halfSpan;
+  const hi = currentPrice + halfSpan;
+
+  const clipped = data.filter((d) => d.price >= lo && d.price <= hi);
+  return clipped.length >= 3 ? clipped : data;
+}
 
 function useChartSize(ref: React.RefObject<HTMLDivElement | null>) {
   const [size, setSize] = useState({ width: 320, height: 200 });
@@ -36,7 +62,10 @@ function useChartSize(ref: React.RefObject<HTMLDivElement | null>) {
 
     const update = () => {
       const w = el.clientWidth || 320;
-      const h = Math.max(200, Math.min(w * 0.48, 380));
+      const isMobile = w < 480;
+      const h = isMobile
+        ? Math.max(160, Math.min(w * 0.52, 220))
+        : Math.max(200, Math.min(w * 0.48, 380));
       setSize({ width: w, height: h });
     };
 
@@ -65,14 +94,21 @@ export function PayoffChart({
     setSpotPrice(currentPrice);
   }, [currentPrice]);
 
-  const plotW = width - MARGIN.left - MARGIN.right;
-  const plotH = height - MARGIN.top - MARGIN.bottom;
+  const isMobile = width < 480;
+  const margin = isMobile || compact ? MARGIN_MOBILE : MARGIN;
+  const displayData = useMemo(
+    () => clipPayoffForDisplay(data, currentPrice, isMobile || compact),
+    [data, currentPrice, isMobile, compact],
+  );
+
+  const plotW = width - margin.left - margin.right;
+  const plotH = height - margin.top - margin.bottom;
 
   const geom = useMemo(() => {
-    if (!data.length || plotW <= 0 || plotH <= 0) return null;
+    if (!displayData.length || plotW <= 0 || plotH <= 0) return null;
 
-    const prices = data.map((d) => d.price);
-    const pnls = data.map((d) => d.pnl);
+    const prices = displayData.map((d) => d.price);
+    const pnls = displayData.map((d) => d.pnl);
     const pMin = Math.min(...prices);
     const pMax = Math.max(...prices);
     const pSpan = pMax - pMin || 1;
@@ -84,22 +120,23 @@ export function PayoffChart({
     yMax += yPad;
     const ySpanPlot = yMax - yMin || 1;
 
-    const xScale = (p: number) => MARGIN.left + ((p - pMin) / pSpan) * plotW;
+    const xScale = (p: number) => margin.left + ((p - pMin) / pSpan) * plotW;
     const yScale = (pnl: number) =>
-      MARGIN.top + (1 - (pnl - yMin) / ySpanPlot) * plotH;
+      margin.top + (1 - (pnl - yMin) / ySpanPlot) * plotH;
     const zeroY = yScale(0);
 
     const linePath =
       line<PayoffPoint>()
         .x((d) => xScale(d.price))
         .y((d) => yScale(d.pnl))
-        .curve(curveLinear)(data) ?? "";
+        .curve(curveLinear)(displayData) ?? "";
 
-    const areaPath = `${linePath} L${xScale(data[data.length - 1].price).toFixed(2)},${zeroY.toFixed(2)} L${xScale(data[0].price).toFixed(2)},${zeroY.toFixed(2)} Z`;
+    const areaPath = `${linePath} L${xScale(displayData[displayData.length - 1].price).toFixed(2)},${zeroY.toFixed(2)} L${xScale(displayData[0].price).toFixed(2)},${zeroY.toFixed(2)} Z`;
 
-    const priceTicks = buildTicks(pMin, pMax, Math.max(4, Math.floor(plotW / 72)));
-    const pnlTicks = buildTicks(yMin, yMax, Math.max(4, Math.floor(plotH / 36)));
-    const breakevens = findBreakevens(data);
+    const tickDivisor = isMobile || compact ? 96 : 72;
+    const priceTicks = buildTicks(pMin, pMax, Math.max(3, Math.floor(plotW / tickDivisor)));
+    const pnlTicks = buildTicks(yMin, yMax, Math.max(3, Math.floor(plotH / (isMobile ? 44 : 36))));
+    const breakevens = findBreakevens(displayData);
 
     return {
       pMin,
@@ -115,7 +152,7 @@ export function PayoffChart({
       pnlTicks,
       breakevens,
     };
-  }, [data, plotW, plotH]);
+  }, [displayData, plotW, plotH, margin, isMobile, compact]);
 
   const priceFromClientX = useCallback(
     (clientX: number) => {
@@ -124,11 +161,11 @@ export function PayoffChart({
       const x = clientX - rect.left;
       const ratio = Math.min(
         1,
-        Math.max(0, (x - MARGIN.left) / (rect.width - MARGIN.left - MARGIN.right)),
+        Math.max(0, (x - margin.left) / (rect.width - margin.left - margin.right)),
       );
       return geom.pMin + ratio * (geom.pMax - geom.pMin);
     },
-    [geom, currentPrice],
+    [geom, currentPrice, margin],
   );
 
   const onPointerDown = (e: ReactPointerEvent) => {
@@ -163,7 +200,7 @@ export function PayoffChart({
 
   const clampedSpot = Math.max(geom.pMin, Math.min(geom.pMax, spotPrice));
   const spotX = xScale(clampedSpot);
-  const spotPnl = pnlAtPrice(data, clampedSpot);
+  const spotPnl = pnlAtPrice(displayData, clampedSpot);
   const isProfit = spotPnl >= 0;
   const pnlColor = isProfit ? "var(--positive)" : "var(--negative)";
 
@@ -173,7 +210,7 @@ export function PayoffChart({
   return (
     <div
       ref={wrapRef}
-      className="payoff-chart-wrap payoff-chart-expiry"
+      className={`payoff-chart-wrap payoff-chart-expiry${isMobile || compact ? " payoff-chart-wrap--mobile" : ""}`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -218,15 +255,15 @@ export function PayoffChart({
         {pnlTicks.map((v) => (
           <g key={`y-${v}`}>
             <line
-              x1={MARGIN.left}
+              x1={margin.left}
               y1={yScale(v)}
-              x2={width - MARGIN.right}
+              x2={width - margin.right}
               y2={yScale(v)}
               stroke="rgba(255,255,255,0.06)"
               strokeWidth={v === 0 ? 0 : 0.5}
             />
             <text
-              x={MARGIN.left - 8}
+              x={margin.left - 6}
               y={yScale(v)}
               textAnchor="end"
               dominantBaseline="middle"
@@ -245,15 +282,15 @@ export function PayoffChart({
           <g key={`x-${v}`}>
             <line
               x1={xScale(v)}
-              y1={MARGIN.top}
+              y1={margin.top}
               x2={xScale(v)}
-              y2={height - MARGIN.bottom}
+              y2={height - margin.bottom}
               stroke="rgba(255,255,255,0.05)"
               strokeWidth={0.5}
             />
             <text
               x={xScale(v)}
-              y={height - MARGIN.bottom + 18}
+              y={height - margin.bottom + 16}
               textAnchor="middle"
               fill="rgba(255,255,255,0.28)"
               fontSize={10}
@@ -266,9 +303,9 @@ export function PayoffChart({
 
         {/* Zero line */}
         <line
-          x1={MARGIN.left}
+          x1={margin.left}
           y1={zeroY}
-          x2={width - MARGIN.right}
+          x2={width - margin.right}
           y2={zeroY}
           stroke="rgba(255,255,255,0.35)"
           strokeWidth={1}
@@ -301,16 +338,16 @@ export function PayoffChart({
           <g key={bp}>
             <line
               x1={xScale(bp)}
-              y1={MARGIN.top}
+              y1={margin.top}
               x2={xScale(bp)}
-              y2={height - MARGIN.bottom}
+              y2={height - margin.bottom}
               stroke={accentColor}
               strokeWidth={1}
               strokeOpacity={0.35}
             />
             <text
               x={xScale(bp)}
-              y={MARGIN.top - 6}
+              y={margin.top - 5}
               textAnchor="middle"
               fill={accentColor}
               fontSize={9}
@@ -325,9 +362,9 @@ export function PayoffChart({
         {/* Spot price marker */}
         <line
           x1={spotX}
-          y1={MARGIN.top}
+          y1={margin.top}
           x2={spotX}
-          y2={height - MARGIN.bottom}
+          y2={height - margin.bottom}
           stroke="rgba(255,255,255,0.9)"
           strokeWidth={2}
           strokeDasharray="6,4"
@@ -344,25 +381,25 @@ export function PayoffChart({
 
         {/* Axis captions */}
         <text
-          x={width / 2}
+          x={isMobile ? width / 2 : width / 2}
           y={height - 4}
           textAnchor="middle"
           fill="rgba(255,255,255,0.2)"
-          fontSize={9}
+          fontSize={isMobile ? 8 : 9}
           fontFamily="var(--mono)"
           letterSpacing="0.06em"
         >
           STOCK PRICE AT EXPIRATION
         </text>
         <text
-          x={12}
-          y={MARGIN.top + plotH / 2}
+          x={10}
+          y={margin.top + plotH / 2}
           textAnchor="middle"
           fill="rgba(255,255,255,0.2)"
-          fontSize={9}
+          fontSize={isMobile ? 8 : 9}
           fontFamily="var(--mono)"
           letterSpacing="0.06em"
-          transform={`rotate(-90, 12, ${MARGIN.top + plotH / 2})`}
+          transform={`rotate(-90, 10, ${margin.top + plotH / 2})`}
         >
           P&amp;L
         </text>

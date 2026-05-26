@@ -1,5 +1,10 @@
 import { useCallback, useRef, useState } from "react";
 import { API_BASE } from "../lib/apiBase";
+import {
+  userFacingAgentMessage,
+  userFacingNetworkError,
+  userFacingStreamError,
+} from "../lib/safeErrors";
 import type {
   AgentEvent,
   ContextData,
@@ -77,11 +82,10 @@ export function useAgentStream(apiBase = API_BASE) {
         });
 
         if (!resp.ok) {
-          const text = await resp.text();
           setState((s) => ({
             ...s,
             isStreaming: false,
-            error: `API error ${resp.status}: ${text}`,
+            error: userFacingStreamError(resp.status),
           }));
           return;
         }
@@ -134,7 +138,9 @@ export function useAgentStream(apiBase = API_BASE) {
                     break;
                   }
                   case "error":
-                    next.error = (typed.data as { message: string }).message;
+                    next.error = userFacingAgentMessage(
+                      (typed.data as { message: string }).message,
+                    );
                     break;
                   case "done":
                     next.isStreaming = false;
@@ -156,7 +162,7 @@ export function useAgentStream(apiBase = API_BASE) {
         setState((s) => ({
           ...s,
           isStreaming: false,
-          error: (err as Error)?.message ?? "Stream failed",
+          error: userFacingNetworkError(),
         }));
       }
     },

@@ -359,26 +359,11 @@ textarea:focus {
   .view-sidebar {
     width: 100% !important;
     flex-shrink: 0 !important;
-    max-height: none !important;
     border-right: none !important;
     border-bottom: 1px solid var(--border);
-    padding: 20px 16px !important;
-    animation: fadeIn 0.5s var(--ease) both !important;
+    padding: 10px 12px !important;
+    animation: fadeIn 0.4s var(--ease) both !important;
     overflow: visible !important;
-  }
-
-  .view-sidebar-ticker {
-    margin-bottom: 20px !important;
-  }
-
-  .view-sidebar-fields {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px 20px;
-  }
-
-  .view-sidebar-field {
-    margin-bottom: 0 !important;
   }
 
   .analysis-reasoning {
@@ -392,8 +377,8 @@ textarea:focus {
   .analysis-center {
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 0 16px;
-    flex: 1;
+    padding: 0 12px;
+    flex: 1 1 auto;
     min-height: 0;
     width: 100%;
     -webkit-overflow-scrolling: touch;
@@ -401,14 +386,22 @@ textarea:focus {
 
   .analysis-center-inner {
     max-width: none !important;
-    padding: 20px 0 48px !important;
+    padding: 12px 0 40px !important;
   }
 
   .payoff-chart-expiry {
-    min-height: 200px;
+    min-height: 180px;
+  }
+
+  .payoff-chart-wrap--mobile .payoff-chart-expiry {
+    min-height: 160px;
   }
 
   .strategy-card-metrics {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .strategy-card {
+    padding: 14px 12px !important;
   }
 }

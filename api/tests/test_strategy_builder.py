@@ -6,6 +6,7 @@ from app.schemas.analysis import LiquidityProfile, ParsedView, StrategyMetrics
 from app.services.strategy_builder import (
     _trade_quality,
     build_strategies,
+    build_strategies_resilient,
     parse_horizon_days,
     parse_risk_budget,
 )
@@ -130,3 +131,24 @@ class TestBuildStrategies:
         names_filtered = {s.name for s in filtered}
         if "Bull Put Spread" in names_all:
             assert "Bull Put Spread" not in names_filtered
+
+    def test_resilient_recovers_from_tight_risk_budget(self, sample_snapshot):
+        view = ParsedView(
+            direction="Bullish",
+            direction_icon="↑",
+            magnitude="±10%",
+            horizon="60 days",
+            horizon_label="60 days",
+            volatility_view="Mid",
+            risk_budget="$50",
+            underlying="MU",
+            underlying_price=sample_snapshot.spot,
+            iv_rank=50,
+            iv_label="Mid",
+        )
+        strict = build_strategies(view, sample_snapshot)
+        assert strict == []
+        strategies, adjusted, notes = build_strategies_resilient(view, sample_snapshot)
+        assert len(strategies) >= 1
+        assert adjusted.risk_budget == "not specified"
+        assert notes

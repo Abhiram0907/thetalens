@@ -1,8 +1,8 @@
 # Render Blueprint — https://render.com/docs/blueprint-spec
 # Deploy: connect this repo in Render → New → Blueprint → apply this file.
 #
-# After deploy, set CORS_ORIGINS on the API to your Vercel URL(s), then set
-# VITE_API_BASE on Vercel to this service's URL (see docs/DEPLOYMENT.md).
+# After deploy, set VITE_API_BASE on Vercel to this service's URL (see docs/DEPLOYMENT.md).
+# CORS_ORIGINS defaults to https://thetalens.app in render.yaml.
 
 services:
   - type: web
@@ -19,11 +19,15 @@ services:
         value: "3.12.8"
       - key: LLM_ACTIVE
         value: gemini
+      - key: APP_ENV
+        value: production
       - key: GOOGLE_API_KEY
         sync: false
       - key: POLYGON_API_KEY
         sync: false
       - key: FINNHUB_API_KEY
         sync: false
-      - key: CORS_ORIGINS
+      - key: ADMIN_API_KEY
         sync: false
+      - key: CORS_ORIGINS
+        value: https://thetalens.app,https://www.thetalens.app

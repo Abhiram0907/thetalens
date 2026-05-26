@@ -1,11 +1,12 @@
 from fastapi import HTTPException
 
 from app.core.dependencies import get_intent_chain
+from app.core.security import UPSTREAM_UNAVAILABLE
 from app.schemas.analysis import AnalyzeResponse
 from app.services.field_parser import parse_magnitude_text, parse_risk_budget_text
 from app.services.market_data import MarketDataError, estimate_iv_rank, get_polygon_client
 from app.services.reasoning import build_analysis_reasoning_steps
-from app.services.strategy_builder import build_strategies, parse_horizon_days
+from app.services.strategy_builder import build_strategies_resilient, parse_horizon_days
 from app.services.view_parser import parse_view
 
 
@@ -43,7 +44,7 @@ async def run_analysis(query: str) -> AnalyzeResponse:
         client = get_polygon_client()
         snapshot = await client.load_snapshot(view.underlying, target_dte)
     except MarketDataError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail=UPSTREAM_UNAVAILABLE) from exc
 
     iv_rank, iv_label = estimate_iv_rank(snapshot.contracts, snapshot.spot)
     view = view.model_copy(
@@ -54,11 +55,14 @@ async def run_analysis(query: str) -> AnalyzeResponse:
         }
     )
 
-    strategies = build_strategies(view, snapshot)
+    strategies, view, _build_notes = build_strategies_resilient(view, snapshot)
     if not strategies:
         raise HTTPException(
             status_code=503,
-            detail=f"Could not build strategies for {view.underlying} from chain data.",
+            detail=(
+                f"Could not build strategies for {view.underlying} from chain data. "
+                "Try widening the horizon, relaxing risk budget, or a more liquid ticker."
+            ),
         )
 
     steps = build_analysis_reasoning_steps(

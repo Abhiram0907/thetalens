@@ -1,25 +1,25 @@
 """SSE streaming endpoints for the Trade Thesis Agent."""
 
-from __future__ import annotations
+from typing import Annotated, AsyncIterator
 
-import os
-from typing import AsyncIterator
-
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.agents.thesis_agent import AgentEvent, EventType, ThesisAgent
 from app.config import get_settings
 from app.core.disclaimer import DISCLAIMER_STANDARD
+from app.core.security import LLM_UNAVAILABLE, UPSTREAM_UNAVAILABLE, safe_client_message
 from app.llm_config import get_llm_config
+from app.middleware.rate_limit import limiter
+from app.services.market_data import MarketDataError, get_polygon_client
 from app.tools.registry import PolygonClient
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 
 
 class ThesisRequest(BaseModel):
-    query: str = Field(..., description="The user's natural-language trade thesis")
+    query: str = Field(..., max_length=4000, description="The user's natural-language trade thesis")
     underlying: str | None = None
     direction: str | None = None
     magnitude: str | None = None
@@ -36,21 +36,18 @@ class ThesisResult(BaseModel):
 
 def _get_polygon_client() -> PolygonClient:
     settings = get_settings()
-    key = settings.polygon_api_key or os.environ.get("POLYGON_API_KEY", "")
-    if not key:
+    if not settings.polygon_api_key:
         raise HTTPException(503, "POLYGON_API_KEY not configured")
-    return PolygonClient(api_key=key, base_url=settings.polygon_base_url)
+    return PolygonClient(api_key=settings.polygon_api_key, base_url=settings.polygon_base_url)
 
 
 def _get_agent(polygon: PolygonClient) -> ThesisAgent:
     cfg = get_llm_config()
-    api_key = (
-        cfg.google_api_key
-        or os.environ.get("GOOGLE_API_KEY")
-        or os.environ.get("GEMINI_API_KEY")
-    )
+    api_key = cfg.google_api_key or get_settings().google_api_key
     if not api_key:
         raise HTTPException(503, "GOOGLE_API_KEY not configured")
+
+    import os
 
     model = (
         os.environ.get("AGENT_MODEL")
@@ -105,10 +102,15 @@ def _extract_ticker(query: str) -> str:
 
 
 @router.post("/stream")
-async def stream_thesis(req: ThesisRequest):
+@limiter.limit("8/minute")
+async def stream_thesis(
+    request: Request,
+    req: Annotated[ThesisRequest, Body()],
+):
     polygon = _get_polygon_client()
     agent = _get_agent(polygon)
     intent = _build_intent(req)
+    settings = get_settings()
 
     async def event_stream() -> AsyncIterator[str]:
         try:
@@ -125,12 +127,24 @@ async def stream_thesis(req: ThesisRequest):
                     except Exception as e:
                         yield AgentEvent(
                             type=EventType.ERROR,
-                            data={"message": f"Strategy builder error: {e}"},
+                            data={
+                                "message": safe_client_message(
+                                    e,
+                                    default=UPSTREAM_UNAVAILABLE,
+                                    dev_detail=not settings.is_production,
+                                )
+                            },
                         ).to_sse()
         except Exception as e:
             yield AgentEvent(
                 type=EventType.ERROR,
-                data={"message": str(e)},
+                data={
+                    "message": safe_client_message(
+                        e,
+                        default=LLM_UNAVAILABLE,
+                        dev_detail=not settings.is_production,
+                    )
+                },
             ).to_sse()
 
     return StreamingResponse(
@@ -145,7 +159,15 @@ async def stream_thesis(req: ThesisRequest):
 
 
 @router.post("/run", response_model=ThesisResult)
-async def run_thesis(req: ThesisRequest):
+@limiter.limit("4/minute")
+async def run_thesis(
+    request: Request,
+    req: Annotated[ThesisRequest, Body()],
+):
+    settings = get_settings()
+    if settings.is_production:
+        raise HTTPException(status_code=404, detail="Not found")
+
     polygon = _get_polygon_client()
     agent = _get_agent(polygon)
     intent = _build_intent(req)
@@ -169,9 +191,9 @@ async def run_thesis(req: ThesisRequest):
 
 async def _build_strategies(enriched_context: dict) -> dict:
     from app.schemas.analysis import ParsedView
-    from app.services.market_data import MarketDataError, estimate_iv_rank, get_polygon_client
+    from app.services.market_data import estimate_iv_rank
     from app.services.reasoning import build_agent_research_reasoning_steps
-    from app.services.strategy_builder import build_strategies, parse_horizon_days
+    from app.services.strategy_builder import build_strategies_resilient, parse_horizon_days
 
     ticker = enriched_context.get("ticker", "SPY").upper()
     direction_raw = str(enriched_context.get("direction", "neutral")).lower()
@@ -197,7 +219,10 @@ async def _build_strategies(enriched_context: dict) -> dict:
         client = get_polygon_client()
         snapshot = await client.load_snapshot(ticker, target_dte, sigma=sigma)
     except MarketDataError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=503,
+            detail=UPSTREAM_UNAVAILABLE,
+        ) from exc
 
     iv_regime = iv_data.get("regime", "Mid")
     if iv_data.get("error"):
@@ -229,48 +254,37 @@ async def _build_strategies(enriched_context: dict) -> dict:
         iv_label=iv_label,
     )
 
-    strategies = build_strategies(
+    strategies, view, build_notes = build_strategies_resilient(
         view,
         snapshot,
         iv_regime=iv_regime,
         earnings_in_window=earnings_data.get("earnings_in_trade_window", False),
         avoid_structures=avoid,
     )
-    if not strategies and avoid:
-        strategies = build_strategies(
-            view,
-            snapshot,
-            iv_regime=iv_regime,
-            earnings_in_window=earnings_data.get("earnings_in_trade_window", False),
-            avoid_structures=[],
-        )
-    if not strategies and direction != "Neutral":
-        neutral_view = view.model_copy(
-            update={
-                "direction": "Neutral",
-                "direction_icon": "→",
-                "magnitude": "±5% range",
-            }
-        )
-        strategies = build_strategies(
-            neutral_view,
-            snapshot,
-            iv_regime=iv_regime,
-            earnings_in_window=earnings_data.get("earnings_in_trade_window", False),
-            avoid_structures=[],
-        )
-        if strategies:
-            view = neutral_view
 
     if not strategies:
         raise HTTPException(
             status_code=503,
-            detail=f"Could not build strategies for {ticker} from chain data.",
+            detail=(
+                f"Could not build strategies for {ticker} from chain data. "
+                "Try widening the horizon, relaxing risk budget, or a more liquid ticker."
+            ),
         )
 
     steps = build_agent_research_reasoning_steps(
         enriched_context, view, snapshot, strategies, target_dte=target_dte
     )
+    if build_notes:
+        from app.schemas.analysis import ReasoningStep
+
+        steps = [
+            ReasoningStep(
+                node="builder",
+                message=" ".join(build_notes),
+                delay=steps[-1].delay if steps else 0,
+            ),
+            *steps,
+        ]
 
     return {
         "strategies": [s.model_dump() for s in strategies],
