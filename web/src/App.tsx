@@ -805,8 +805,8 @@ export default function App() {
                     <div
                       style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}
                     >
-                      {visibleCards} of {strategies.length} · sorted by
-                      risk-adjusted score
+                      {visibleCards} of {strategies.length} · sorted by thesis
+                      rank (execution quality on each card)
                     </div>
                   </div>
                 )}
