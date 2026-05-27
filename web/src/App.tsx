@@ -250,6 +250,7 @@ export default function App() {
   const resetToInput = () => {
     clearTimers();
     setPhase("input");
+    setQuery("");
     setVisibleSteps(0);
     setVisibleCards(0);
     setExpandedCard(null);
@@ -560,7 +561,7 @@ export default function App() {
               query,
             }}
             onComplete={handleAgentComplete}
-            onBack={() => setPhase("input")}
+            onBack={resetToInput}
             accentColor={ACCENT_COLOR}
           />
         </div>
@@ -804,8 +805,8 @@ export default function App() {
                     <div
                       style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}
                     >
-                      {visibleCards} of {strategies.length} · sorted by
-                      risk-adjusted score
+                      {visibleCards} of {strategies.length} · sorted by thesis
+                      rank (execution quality on each card)
                     </div>
                   </div>
                 )}

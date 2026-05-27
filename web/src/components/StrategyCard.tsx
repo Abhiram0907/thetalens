@@ -26,6 +26,23 @@ function qualityColor(verdict?: string): string {
   return "var(--accent)";
 }
 
+const RANK_SCORE_TOOLTIP =
+  "Thesis rank: how well this structure fits your direction, horizon, and payoff target (70% thesis fit + 30% execution quality).";
+
+const EXECUTION_TOOLTIP =
+  "Execution quality: live quote confidence, earnings/catalyst timing, IV regime fit, and sizing warnings.";
+
+function executionConflictHint(
+  rank: number,
+  verdict?: "Tradeable" | "Caution" | "Avoid",
+): string | null {
+  if (rank !== 1 || !verdict || verdict === "Tradeable") return null;
+  if (verdict === "Avoid") {
+    return "Best thesis match; verify live quotes and catalysts before sizing.";
+  }
+  return "Top ranked for your view; review execution caveats below.";
+}
+
 export function StrategyCard({
   strategy: s,
   index,
@@ -41,6 +58,10 @@ export function StrategyCard({
   const scenarios = s.scenarios ?? [];
   const managementRules = s.managementRules ?? [];
   const education = s.education ?? [];
+  const executionHint = executionConflictHint(
+    s.rank,
+    s.tradeQuality?.verdict,
+  );
 
   return (
     <div
@@ -123,34 +144,61 @@ export function StrategyCard({
             {s.tag}
           </div>
           {s.tradeQuality && (
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                marginTop: 8,
-                padding: "3px 8px",
-                borderRadius: 999,
-                background: `${qualityColor(s.tradeQuality.verdict)}18`,
-                border: `1px solid ${qualityColor(s.tradeQuality.verdict)}33`,
-                color: qualityColor(s.tradeQuality.verdict),
-                fontSize: 10,
-                fontFamily: "var(--mono)",
-                letterSpacing: "0.04em",
-                textTransform: "uppercase",
-              }}
-            >
-              {s.tradeQuality.verdict} · {s.tradeQuality.score}
+            <div style={{ marginTop: 8 }}>
+              <div
+                title={EXECUTION_TOOLTIP}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "3px 8px",
+                  borderRadius: 999,
+                  background: `${qualityColor(s.tradeQuality.verdict)}18`,
+                  border: `1px solid ${qualityColor(s.tradeQuality.verdict)}33`,
+                  color: qualityColor(s.tradeQuality.verdict),
+                  fontSize: 10,
+                  fontFamily: "var(--mono)",
+                  letterSpacing: "0.04em",
+                  cursor: "help",
+                }}
+              >
+                <span
+                  style={{
+                    color: "var(--text-3)",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Execution
+                </span>
+                <span style={{ color: "var(--text-4)" }}>·</span>
+                <span style={{ textTransform: "uppercase" }}>
+                  {s.tradeQuality.verdict} {s.tradeQuality.score}
+                </span>
+              </div>
+              {executionHint && (
+                <div
+                  style={{
+                    marginTop: 6,
+                    fontSize: 11,
+                    lineHeight: 1.45,
+                    color: "var(--text-3)",
+                    maxWidth: 280,
+                  }}
+                >
+                  {executionHint}
+                </div>
+              )}
             </div>
           )}
         </div>
-        <div style={{ textAlign: "right" }}>
+        <div style={{ textAlign: "right" }} title={RANK_SCORE_TOOLTIP}>
           <div
             style={{
               fontFamily: "var(--mono)",
               fontSize: 18,
               fontWeight: 500,
               color: accentColor,
+              cursor: "help",
             }}
           >
             {s.score}
@@ -161,9 +209,10 @@ export function StrategyCard({
               color: "var(--text-3)",
               fontFamily: "var(--mono)",
               letterSpacing: "0.04em",
+              textTransform: "uppercase",
             }}
           >
-            SCORE
+            Rank
           </div>
         </div>
       </div>
@@ -353,7 +402,7 @@ export function StrategyCard({
                 marginBottom: 8,
               }}
             >
-              Trade Quality
+              Execution Quality
             </div>
             {s.tradeQuality && (
               <div style={{ marginBottom: 12 }}>
@@ -365,7 +414,18 @@ export function StrategyCard({
                     marginBottom: 6,
                   }}
                 >
-                  {s.tradeQuality.verdict} · score {s.tradeQuality.score}/100
+                  {s.tradeQuality.verdict} · {s.tradeQuality.score}/100
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text-3)",
+                    lineHeight: 1.45,
+                    marginBottom: 8,
+                  }}
+                >
+                  Separate from thesis rank ({s.score}): quotes, catalysts, and
+                  IV regime for entering the trade.
                 </div>
                 <ul style={{ margin: 0, paddingLeft: 18 }}>
                   {s.tradeQuality.reasons.map((reason) => (
