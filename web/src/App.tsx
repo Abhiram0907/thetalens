@@ -250,6 +250,7 @@ export default function App() {
   const resetToInput = () => {
     clearTimers();
     setPhase("input");
+    setQuery("");
     setVisibleSteps(0);
     setVisibleCards(0);
     setExpandedCard(null);
@@ -560,7 +561,7 @@ export default function App() {
               query,
             }}
             onComplete={handleAgentComplete}
-            onBack={() => setPhase("input")}
+            onBack={resetToInput}
             accentColor={ACCENT_COLOR}
           />
         </div>
