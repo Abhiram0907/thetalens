@@ -98,10 +98,13 @@ class TestBuildStrategies:
             risk_budget="$500",
             underlying="TEST",
             underlying_price=100.0,
+            realized_vol_rank=50,
+            realized_vol_regime="Mid",
+            realized_vol_label="50th percentile · 30d realized vol",
             iv_rank=50,
             iv_label="Mid",
         )
-        strategies = build_strategies(
+        strategies, _notes = build_strategies(
             view, sample_snapshot, iv_regime="Mid", earnings_in_window=False
         )
         assert len(strategies) >= 1
@@ -120,11 +123,14 @@ class TestBuildStrategies:
             risk_budget="$1000",
             underlying="TEST",
             underlying_price=100.0,
+            realized_vol_rank=50,
+            realized_vol_regime="Mid",
+            realized_vol_label="50th percentile · 30d realized vol",
             iv_rank=50,
             iv_label="Mid",
         )
-        all_strats = build_strategies(view, sample_snapshot)
-        filtered = build_strategies(
+        all_strats, _ = build_strategies(view, sample_snapshot)
+        filtered, _ = build_strategies(
             view, sample_snapshot, avoid_structures=["Bull Put Spread"]
         )
         names_all = {s.name for s in all_strats}
@@ -143,10 +149,13 @@ class TestBuildStrategies:
             risk_budget="$50",
             underlying="MU",
             underlying_price=sample_snapshot.spot,
+            realized_vol_rank=50,
+            realized_vol_regime="Mid",
+            realized_vol_label="50th percentile · 30d realized vol",
             iv_rank=50,
             iv_label="Mid",
         )
-        strict = build_strategies(view, sample_snapshot)
+        strict, _ = build_strategies(view, sample_snapshot)
         assert strict == []
         strategies, adjusted, notes = build_strategies_resilient(view, sample_snapshot)
         assert len(strategies) >= 1

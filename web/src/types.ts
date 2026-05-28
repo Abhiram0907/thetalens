@@ -56,6 +56,14 @@ export type Strategy = {
   payoffData: PayoffPoint[];
 };
 
+export type DataProvenance = {
+  spotSource: "yfinance" | "polygon";
+  spotAsOf: string | null;
+  optionsPriceMethod: "black_scholes_modeled";
+  volInput: "realized_30d" | "implied" | "default";
+  dataAgeWarning: string | null;
+};
+
 export type ParsedView = {
   direction: string;
   directionIcon: string;
@@ -66,7 +74,12 @@ export type ParsedView = {
   riskBudget: string;
   underlying: string;
   underlyingPrice: number;
+  realizedVolRank: number;
+  realizedVolRegime: string;
+  realizedVolLabel: string;
+  /** @deprecated Use realizedVolRank — kept for backward compatibility */
   ivRank: number;
+  /** @deprecated Use realizedVolLabel */
   ivLabel: string;
 };
 

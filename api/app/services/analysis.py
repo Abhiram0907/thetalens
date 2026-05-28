@@ -4,7 +4,12 @@ from app.core.dependencies import get_intent_chain
 from app.core.security import UPSTREAM_UNAVAILABLE
 from app.schemas.analysis import AnalyzeResponse
 from app.services.field_parser import parse_magnitude_text, parse_risk_budget_text
-from app.services.market_data import MarketDataError, estimate_iv_rank, get_polygon_client
+from app.services.data_provenance import build_data_provenance, build_vol_view_fields
+from app.services.market_data import (
+    MarketDataError,
+    estimate_iv_rank,
+    load_snapshot_cached,
+)
 from app.services.reasoning import build_analysis_reasoning_steps
 from app.services.strategy_builder import build_strategies_resilient, parse_horizon_days
 from app.services.view_parser import parse_view
@@ -41,19 +46,23 @@ async def run_analysis(query: str) -> AnalyzeResponse:
     target_dte = parse_horizon_days(view.horizon)
 
     try:
-        client = get_polygon_client()
-        snapshot = await client.load_snapshot(view.underlying, target_dte)
+        snapshot = await load_snapshot_cached(view.underlying, target_dte)
     except MarketDataError as exc:
         raise HTTPException(status_code=503, detail=UPSTREAM_UNAVAILABLE) from exc
 
-    iv_rank, iv_label = estimate_iv_rank(snapshot.contracts, snapshot.spot)
+    fallback_rank, fallback_label = estimate_iv_rank(snapshot.contracts, snapshot.spot)
+    vol_fields = build_vol_view_fields(
+        None,
+        fallback_rank=fallback_rank,
+        fallback_label=fallback_label,
+    )
     view = view.model_copy(
         update={
             "underlying_price": round(snapshot.spot, 2),
-            "iv_rank": iv_rank,
-            "iv_label": iv_label,
+            **vol_fields,
         }
     )
+    data_provenance = build_data_provenance(snapshot, sigma=None)
 
     strategies, view, _build_notes = build_strategies_resilient(view, snapshot)
     if not strategies:
@@ -74,4 +83,5 @@ async def run_analysis(query: str) -> AnalyzeResponse:
         reasoning_steps=steps,
         strategies=strategies,
         underlying_price=view.underlying_price,
+        data_provenance=data_provenance,
     )

@@ -1,4 +1,5 @@
-import type { Strategy } from "../types";
+import type { DataProvenance, Strategy } from "../types";
+import { DataProvenanceBanner } from "./DataProvenanceBanner";
 import { MetricCell } from "./MetricCell";
 import { PayoffChart } from "./PayoffChart";
 import { FinancialDisclaimer } from "./FinancialDisclaimer";
@@ -11,6 +12,7 @@ type StrategyCardProps = {
   accentColor: string;
   showGreeks: boolean;
   spotPrice: number;
+  dataProvenance?: DataProvenance | null;
   compact?: boolean;
 };
 
@@ -51,6 +53,7 @@ export function StrategyCard({
   accentColor,
   showGreeks,
   spotPrice,
+  dataProvenance = null,
   compact = false,
 }: StrategyCardProps) {
   const isTop = s.rank === 1;
@@ -279,6 +282,11 @@ export function StrategyCard({
 
       {expanded && (
         <div style={{ marginTop: 16, animation: "fadeIn 0.3s ease" }}>
+          {dataProvenance && (
+            <div style={{ marginBottom: 12 }} onClick={(e) => e.stopPropagation()}>
+              <DataProvenanceBanner provenance={dataProvenance} compact />
+            </div>
+          )}
           {showGreeks && (
             <div
               style={{

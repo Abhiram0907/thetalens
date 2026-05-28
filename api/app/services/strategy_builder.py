@@ -556,7 +556,7 @@ def build_strategies(
     avoid_structures: list[str] | None = None,
     min_verdict: VerdictLevel = "Caution",
     ignore_risk_cap: bool = False,
-) -> list[Strategy]:
+) -> tuple[list[Strategy], list[str]]:
     target_dte = parse_horizon_days(view.horizon)
     risk_cap = 100_000.0 if ignore_risk_cap else parse_risk_budget(view.risk_budget)
     front, back = select_expiries(snapshot, target_dte)
@@ -568,6 +568,7 @@ def build_strategies(
     raw_templates = _templates_for_direction(view.direction)
     avoid_structures = avoid_structures or []
     built: list[Strategy] = []
+    filter_notes: list[str] = []
     iv_map = _contracts_iv_map(snapshot)
     min_rank = _VERDICT_RANK[min_verdict]
 
@@ -585,7 +586,14 @@ def build_strategies(
         max_gain, max_loss, be_str, pop, ev, rr, warning = _metrics_from_legs(
             legs, spot, risk_cap, tag
         )
-        if warning in ("over_budget", "invalid_pricing"):
+        if warning == "invalid_pricing":
+            filter_notes.append(
+                f"Skipped {name}: modeled credit ≥ spread width "
+                "(invalid vertical — likely stale/modeled mids)."
+            )
+            continue
+        if warning == "over_budget":
+            filter_notes.append(f"Skipped {name}: exceeds stated risk budget.")
             continue
 
         score = max(40, min(95, int(58 + ev / 6 - (22 if warning else 0))))
@@ -656,7 +664,7 @@ def build_strategies(
             else None
         )
         ranked.append(s.model_copy(update={"rank": i, "vs_next": vs_next}))
-    return ranked
+    return ranked, filter_notes
 
 
 def build_strategies_resilient(
@@ -681,7 +689,7 @@ def build_strategies_resilient(
         avoid_list: list[str] | None = None,
         ignore_risk_cap: bool = False,
         min_verdict: VerdictLevel = "Caution",
-    ) -> list[Strategy]:
+    ) -> tuple[list[Strategy], list[str]]:
         return build_strategies(
             candidate,
             snapshot,
@@ -691,19 +699,25 @@ def build_strategies_resilient(
             **kwargs,
         )
 
-    strategies = attempt(view)
+    strategies, skipped = attempt(view)
+    if skipped:
+        notes.extend(skipped[:6])
     if strategies:
         return strategies, view, notes
 
     if avoid:
-        strategies = attempt(view, avoid_list=[])
+        strategies, skipped = attempt(view, avoid_list=[])
+        if skipped:
+            notes.extend(skipped[:4])
         if strategies:
             notes.append("Structure filters were relaxed to produce candidates.")
             return strategies, view, notes
 
     if parse_risk_budget(view.risk_budget) < 100_000.0:
         relaxed = view.model_copy(update={"risk_budget": "not specified"})
-        strategies = attempt(relaxed, avoid_list=[])
+        strategies, skipped = attempt(relaxed, avoid_list=[])
+        if skipped:
+            notes.extend(skipped[:4])
         if strategies:
             notes.append(
                 "Stated risk budget excluded every structure; showing best-fit ideas without that cap."
@@ -718,12 +732,16 @@ def build_strategies_resilient(
                 "magnitude": "±5% range",
             }
         )
-        strategies = attempt(neutral, avoid_list=[])
+        strategies, skipped = attempt(neutral, avoid_list=[])
+        if skipped:
+            notes.extend(skipped[:4])
         if strategies:
             notes.append("Direction was relaxed to neutral to match available chain structures.")
             return strategies, neutral, notes
 
-    strategies = attempt(view, avoid_list=[], ignore_risk_cap=True, min_verdict="Avoid")
+    strategies, skipped = attempt(view, avoid_list=[], ignore_risk_cap=True, min_verdict="Avoid")
+    if skipped:
+        notes.extend(skipped[:4])
     if strategies:
         notes.append("Only marginal structures matched; review trade quality and sizing carefully.")
         return strategies, view, notes
@@ -735,7 +753,9 @@ def build_strategies_resilient(
             "magnitude": "±5% range",
         }
     )
-    strategies = attempt(neutral, avoid_list=[], ignore_risk_cap=True, min_verdict="Avoid")
+    strategies, skipped = attempt(neutral, avoid_list=[], ignore_risk_cap=True, min_verdict="Avoid")
+    if skipped:
+        notes.extend(skipped[:4])
     if strategies:
         notes.append(
             "Only marginal neutral structures matched; review trade quality and sizing carefully."

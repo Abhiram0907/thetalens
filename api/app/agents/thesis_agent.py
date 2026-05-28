@@ -21,8 +21,8 @@ from typing import Any, AsyncIterator
 
 from pydantic import BaseModel
 
+from app.services.polygon_client import PolygonClient
 from app.tools.registry import (
-    PolygonClient,
     derive_magnitude,
     get_all_tools,
     get_tool,

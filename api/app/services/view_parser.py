@@ -23,6 +23,9 @@ DEFAULT_VIEW = ParsedView(
     risk_budget="$500",
     underlying="NVDA",
     underlying_price=0.0,
+    realized_vol_rank=50,
+    realized_vol_regime="—",
+    realized_vol_label="—",
     iv_rank=50,
     iv_label="—",
 )
@@ -162,6 +165,9 @@ def parse_view(query: str) -> ParsedView:
         risk_budget=risk_budget,
         underlying=underlying,
         underlying_price=0.0,
+        realized_vol_rank=50,
+        realized_vol_regime="—",
+        realized_vol_label="—",
         iv_rank=50,
         iv_label="—",
     )

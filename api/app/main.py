@@ -41,7 +41,10 @@ def create_app() -> FastAPI:
         get_finnhub_client(settings.finnhub_api_key)
         logger.info("Finnhub client initialized (peers, news, earnings)")
     else:
-        logger.warning("FINNHUB_API_KEY not set — using Polygon fallback for news/earnings")
+        logger.warning(
+            "FINNHUB_API_KEY not set — peers/earnings/sentiment degraded "
+            "(Polygon news heuristics where applicable)"
+        )
 
     app = FastAPI(
         title=settings.app_name,

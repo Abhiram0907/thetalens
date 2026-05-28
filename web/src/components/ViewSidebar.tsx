@@ -30,7 +30,7 @@ export function ViewSidebar({ view, accentColor }: ViewSidebarProps) {
           </span>
           <span className="view-sidebar-compact__price">${view.underlyingPrice}</span>
           <span className="view-sidebar-compact__iv" style={{ color: accentColor }}>
-            IV {view.ivRank} {view.ivLabel}
+            RV {view.realizedVolRank} · {view.realizedVolRegime}
           </span>
         </div>
         <div className="view-sidebar-compact__meta">
@@ -68,10 +68,16 @@ export function ViewSidebar({ view, accentColor }: ViewSidebarProps) {
 
         <div className="view-sidebar-iv">
           <span className="view-sidebar-iv-label" style={{ color: accentColor }}>
-            IV Rank
+            Realized vol rank
           </span>
-          <span className="view-sidebar-iv-value">{view.ivRank}</span>
-          <span className="view-sidebar-iv-regime">{view.ivLabel}</span>
+          <span className="view-sidebar-iv-value">{view.realizedVolRank}</span>
+          <span className="view-sidebar-iv-regime">{view.realizedVolRegime}</span>
+          <span
+            className="view-sidebar-iv-regime"
+            style={{ display: "block", marginTop: 4, fontSize: 10, lineHeight: 1.4 }}
+          >
+            {view.realizedVolLabel}
+          </span>
         </div>
 
         <div className="view-sidebar-fields">

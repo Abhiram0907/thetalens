@@ -20,8 +20,11 @@ export const PARSED_VIEW: ParsedView = {
   riskBudget: "$500",
   underlying: "NVDA",
   underlyingPrice: 135.42,
+  realizedVolRank: 42,
+  realizedVolRegime: "Mid",
+  realizedVolLabel: "42nd percentile · 30d realized vol (not options IV)",
   ivRank: 42,
-  ivLabel: "42nd percentile",
+  ivLabel: "42nd percentile · 30d realized vol (not options IV)",
 };
 
 export const NODE_COLORS: Record<string, string> = {

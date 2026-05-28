@@ -12,8 +12,8 @@ from app.core.disclaimer import DISCLAIMER_STANDARD
 from app.core.security import LLM_UNAVAILABLE, UPSTREAM_UNAVAILABLE, safe_client_message
 from app.llm_config import get_llm_config
 from app.middleware.rate_limit import limiter
-from app.services.market_data import MarketDataError, get_polygon_client
-from app.tools.registry import PolygonClient
+from app.services.market_data import MarketDataError, load_snapshot_cached
+from app.services.polygon_client import PolygonClient, get_polygon_client
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 
@@ -38,7 +38,10 @@ def _get_polygon_client() -> PolygonClient:
     settings = get_settings()
     if not settings.polygon_api_key:
         raise HTTPException(503, "POLYGON_API_KEY not configured")
-    return PolygonClient(api_key=settings.polygon_api_key, base_url=settings.polygon_base_url)
+    try:
+        return get_polygon_client()
+    except ValueError as exc:
+        raise HTTPException(503, "POLYGON_API_KEY not configured") from exc
 
 
 def _get_agent(polygon: PolygonClient) -> ThesisAgent:
@@ -191,6 +194,10 @@ async def run_thesis(
 
 async def _build_strategies(enriched_context: dict) -> dict:
     from app.schemas.analysis import ParsedView
+    from app.services.data_provenance import (
+        build_data_provenance,
+        build_vol_view_fields,
+    )
     from app.services.market_data import estimate_iv_rank
     from app.services.reasoning import build_agent_research_reasoning_steps
     from app.services.strategy_builder import build_strategies_resilient, parse_horizon_days
@@ -216,8 +223,7 @@ async def _build_strategies(enriched_context: dict) -> dict:
     sigma = rv_pct / 100.0 if rv_pct and rv_pct > 0 else None
 
     try:
-        client = get_polygon_client()
-        snapshot = await client.load_snapshot(ticker, target_dte, sigma=sigma)
+        snapshot = await load_snapshot_cached(ticker, target_dte, sigma=sigma)
     except MarketDataError as exc:
         raise HTTPException(
             status_code=503,
@@ -225,11 +231,17 @@ async def _build_strategies(enriched_context: dict) -> dict:
         ) from exc
 
     iv_regime = iv_data.get("regime", "Mid")
+    fallback_rank: int | None = None
+    fallback_label: str | None = None
     if iv_data.get("error"):
-        iv_rank, iv_label = estimate_iv_rank(snapshot.contracts, snapshot.spot)
-    else:
-        iv_rank = int(round(float(iv_data.get("iv_rank", 50))))
-        iv_label = iv_regime
+        fallback_rank, fallback_label = estimate_iv_rank(snapshot.contracts, snapshot.spot)
+
+    vol_fields = build_vol_view_fields(
+        iv_data,
+        fallback_rank=fallback_rank,
+        fallback_label=fallback_label,
+    )
+    iv_regime = str(vol_fields["realized_vol_regime"])
 
     horizon_display = horizon if "day" in horizon.lower() else f"{target_dte} days"
 
@@ -246,13 +258,17 @@ async def _build_strategies(enriched_context: dict) -> dict:
         magnitude=magnitude,
         horizon=horizon_display,
         horizon_label=horizon,
-        volatility_view=iv_regime,
+        volatility_view=str(vol_fields["volatility_view"]),
         risk_budget=enriched_context.get("risk_budget", "not specified"),
         underlying=ticker,
         underlying_price=round(snapshot.spot, 2),
-        iv_rank=iv_rank,
-        iv_label=iv_label,
+        realized_vol_rank=int(vol_fields["realized_vol_rank"]),
+        realized_vol_regime=str(vol_fields["realized_vol_regime"]),
+        realized_vol_label=str(vol_fields["realized_vol_label"]),
+        iv_rank=int(vol_fields["iv_rank"]),
+        iv_label=str(vol_fields["iv_label"]),
     )
+    data_provenance = build_data_provenance(snapshot, sigma=sigma)
 
     strategies, view, build_notes = build_strategies_resilient(
         view,
@@ -291,5 +307,6 @@ async def _build_strategies(enriched_context: dict) -> dict:
         "parsed_view": view.model_dump(),
         "reasoning_steps": [s.model_dump() for s in steps],
         "underlying_price": view.underlying_price,
+        "data_provenance": data_provenance.model_dump(),
         "disclaimer": DISCLAIMER_STANDARD,
     }

@@ -1,7 +1,7 @@
 import type { FollowUpQuestion } from "../lib/evaluateIntent";
 import { API_BASE } from "../lib/apiBase";
 import { userFacingApiError } from "../lib/safeErrors";
-import type { ParsedView, ReasoningStep, Strategy } from "../types";
+import type { DataProvenance, ParsedView, ReasoningStep, Strategy } from "../types";
 
 export class ApiError extends Error {
   constructor(
@@ -99,23 +99,37 @@ type ApiStrategy = {
   education?: string[];
 };
 
+type ApiDataProvenance = {
+  spot_source: "yfinance" | "polygon";
+  spot_as_of: string | null;
+  options_price_method: "black_scholes_modeled";
+  vol_input: "realized_30d" | "implied" | "default";
+  data_age_warning: string | null;
+};
+
+type ApiParsedView = {
+  direction: string;
+  direction_icon: string;
+  magnitude: string;
+  horizon: string;
+  horizon_label: string;
+  volatility_view: string;
+  risk_budget: string;
+  underlying: string;
+  underlying_price: number;
+  realized_vol_rank?: number;
+  realized_vol_regime?: string;
+  realized_vol_label?: string;
+  iv_rank: number;
+  iv_label: string;
+};
+
 type ApiAnalyzeResponse = {
-  parsed_view: {
-    direction: string;
-    direction_icon: string;
-    magnitude: string;
-    horizon: string;
-    horizon_label: string;
-    volatility_view: string;
-    risk_budget: string;
-    underlying: string;
-    underlying_price: number;
-    iv_rank: number;
-    iv_label: string;
-  };
+  parsed_view: ApiParsedView;
   reasoning_steps: ApiReasoningStep[];
   strategies: ApiStrategy[];
   underlying_price: number;
+  data_provenance: ApiDataProvenance;
 };
 
 export type IntentResult = {
@@ -144,6 +158,7 @@ export type AnalyzeResult = {
   reasoningSteps: ReasoningStep[];
   strategies: Omit<Strategy, "payoffData">[];
   underlyingPrice: number;
+  dataProvenance: DataProvenance;
 };
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
@@ -176,20 +191,43 @@ function mapReasoning(steps: ApiReasoningStep[]): ReasoningStep[] {
 }
 
 export function mapAgentBuildPayload(data: {
-  parsed_view: ApiAnalyzeResponse["parsed_view"];
+  parsed_view: ApiParsedView;
   reasoning_steps: ApiReasoningStep[];
   strategies: ApiStrategy[];
   underlying_price: number;
+  data_provenance?: ApiDataProvenance;
 }): AnalyzeResult {
   return {
     parsedView: mapParsedView(data.parsed_view),
     reasoningSteps: mapReasoning(data.reasoning_steps),
     strategies: data.strategies.map(mapStrategy),
     underlyingPrice: data.underlying_price,
+    dataProvenance: mapDataProvenance(data.data_provenance),
   };
 }
 
-function mapParsedView(v: ApiAnalyzeResponse["parsed_view"]): ParsedView {
+function mapDataProvenance(p?: ApiDataProvenance): DataProvenance {
+  if (!p) {
+    return {
+      spotSource: "yfinance",
+      spotAsOf: null,
+      optionsPriceMethod: "black_scholes_modeled",
+      volInput: "default",
+      dataAgeWarning: null,
+    };
+  }
+  return {
+    spotSource: p.spot_source,
+    spotAsOf: p.spot_as_of,
+    optionsPriceMethod: p.options_price_method,
+    volInput: p.vol_input,
+    dataAgeWarning: p.data_age_warning,
+  };
+}
+
+function mapParsedView(v: ApiParsedView): ParsedView {
+  const realizedVolRank = v.realized_vol_rank ?? v.iv_rank;
+  const realizedVolLabel = v.realized_vol_label ?? v.iv_label;
   return {
     direction: v.direction,
     directionIcon: v.direction_icon,
@@ -200,8 +238,11 @@ function mapParsedView(v: ApiAnalyzeResponse["parsed_view"]): ParsedView {
     riskBudget: v.risk_budget,
     underlying: v.underlying,
     underlyingPrice: v.underlying_price,
-    ivRank: v.iv_rank,
-    ivLabel: v.iv_label,
+    realizedVolRank,
+    realizedVolRegime: v.realized_vol_regime ?? v.volatility_view,
+    realizedVolLabel,
+    ivRank: v.iv_rank ?? realizedVolRank,
+    ivLabel: v.iv_label ?? realizedVolLabel,
   };
 }
 
@@ -275,6 +316,7 @@ export async function fetchAnalyze(query: string): Promise<AnalyzeResult> {
     reasoningSteps: mapReasoning(data.reasoning_steps),
     strategies: data.strategies.map(mapStrategy),
     underlyingPrice: data.underlying_price,
+    dataProvenance: mapDataProvenance(data.data_provenance),
   };
 }
 
