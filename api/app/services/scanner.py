@@ -18,7 +18,8 @@ from datetime import date, timedelta
 from pydantic import BaseModel
 
 from app.tools.providers import get_finnhub_client, get_yfinance_client
-from app.tools.registry import PolygonClient
+from app.services.market_cache import cached_yfinance_daily_bars
+from app.services.polygon_client import PolygonClient
 
 
 class ScannerStock(BaseModel):
@@ -295,13 +296,16 @@ async def build_seed_context(ticker: str) -> SeedContext:
     yf = get_yfinance_client()
     today = date.today()
 
-    bars_90d = await yf.daily_bars(ticker, (today - timedelta(days=90)).isoformat(), today.isoformat())
-    bars_1y = await yf.daily_bars(ticker, (today - timedelta(days=380)).isoformat(), today.isoformat())
+    from_d90 = (today - timedelta(days=90)).isoformat()
+    from_1y = (today - timedelta(days=380)).isoformat()
+    to_date = today.isoformat()
+    bars_90d = await cached_yfinance_daily_bars(ticker, from_d90, to_date)
+    bars_1y = await cached_yfinance_daily_bars(ticker, from_1y, to_date)
 
     rv = _realized_vol_30d(_daily_returns(bars_90d))
     ivr = _iv_rank_from_bars(bars_1y)
 
-    spy_bars = await yf.daily_bars("SPY", (today - timedelta(days=90)).isoformat(), today.isoformat())
+    spy_bars = await cached_yfinance_daily_bars("SPY", from_d90, to_date)
     seed_rets = _daily_returns(bars_90d)
     spy_rets = _daily_returns(spy_bars)
     beta_spy = _beta(seed_rets, spy_rets) if len(spy_rets) > 10 else 1.0
@@ -337,13 +341,12 @@ async def scan_similar(ticker: str, polygon: PolygonClient, top_n: int = 5) -> t
         seed_ctx = await seed_ctx_task
         return seed_ctx, []
 
-    yf = get_yfinance_client()
     today = date.today()
     from_90 = (today - timedelta(days=90)).isoformat()
     from_1y = (today - timedelta(days=380)).isoformat()
     to_date = today.isoformat()
 
-    seed_bars = await yf.daily_bars(ticker, from_90, to_date)
+    seed_bars = await cached_yfinance_daily_bars(ticker, from_90, to_date)
     seed_returns = _daily_returns(seed_bars)
     if len(seed_returns) < 10:
         seed_ctx = await seed_ctx_task
@@ -351,10 +354,10 @@ async def scan_similar(ticker: str, polygon: PolygonClient, top_n: int = 5) -> t
 
     async def _process(rel_ticker: str) -> ScannerStock | None:
         try:
-            bars_90 = await yf.daily_bars(rel_ticker, from_90, to_date)
+            bars_90 = await cached_yfinance_daily_bars(rel_ticker, from_90, to_date)
             if len(bars_90) < 20:
                 return None
-            bars_1y = await yf.daily_bars(rel_ticker, from_1y, to_date)
+            bars_1y = await cached_yfinance_daily_bars(rel_ticker, from_1y, to_date)
             stock = await _build_stock(rel_ticker, seed_returns, bars_90, bars_1y)
             if stock and stock.avg_volume < _MIN_AVG_VOLUME:
                 return None

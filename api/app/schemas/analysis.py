@@ -44,6 +44,15 @@ class IntentResponse(BaseModel):
 
 class AnalyzeRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=4000)
+    captured: CapturedIntent | None = None
+
+
+class DataProvenance(BaseModel):
+    spot_source: Literal["yfinance", "polygon"]
+    spot_as_of: str | None = None
+    options_price_method: Literal["black_scholes_modeled"] = "black_scholes_modeled"
+    vol_input: Literal["realized_30d", "implied", "default"]
+    data_age_warning: str | None = None
 
 
 class ParsedView(BaseModel):
@@ -56,6 +65,9 @@ class ParsedView(BaseModel):
     risk_budget: str
     underlying: str
     underlying_price: float
+    realized_vol_rank: int
+    realized_vol_regime: str
+    realized_vol_label: str
     iv_rank: int
     iv_label: str
 
@@ -140,4 +152,5 @@ class AnalyzeResponse(BaseModel):
     reasoning_steps: list[ReasoningStep]
     strategies: list[Strategy]
     underlying_price: float
+    data_provenance: DataProvenance
     disclaimer: str = Field(default=DISCLAIMER_STANDARD)

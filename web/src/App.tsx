@@ -9,6 +9,7 @@ import { AgentView } from "./components/agent";
 import { AppShell } from "./components/AppShell";
 import { FinancialDisclaimer } from "./components/FinancialDisclaimer";
 import { ReasoningPanel } from "./components/ReasoningPanel";
+import { DataProvenanceBanner } from "./components/DataProvenanceBanner";
 import { StrategyCard } from "./components/StrategyCard";
 import { ViewSidebar } from "./components/ViewSidebar";
 import {
@@ -24,7 +25,7 @@ import type { AgentBuildPayload } from "./hooks/useAgentStream";
 import { DEMO_QUERY, VAGUE_DEMO_QUERY, SCANNER_DEMO_QUERY } from "./data/mockData";
 import { enrichStrategies } from "./lib/enrichStrategies";
 import { userFacingNetworkError } from "./lib/safeErrors";
-import type { ParsedView, ReasoningStep, Strategy } from "./types";
+import type { DataProvenance, ParsedView, ReasoningStep, Strategy } from "./types";
 
 const ACCENT_COLOR = "#c9a655";
 const PARSE_DELAY_MS = 700;
@@ -42,6 +43,7 @@ export default function App() {
   const [expandedCard, setExpandedCard] = useState<number | null>(null);
   const [reasoningSteps, setReasoningSteps] = useState<ReasoningStep[]>([]);
   const [parsedView, setParsedView] = useState<ParsedView | null>(null);
+  const [dataProvenance, setDataProvenance] = useState<DataProvenance | null>(null);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -93,7 +95,7 @@ export default function App() {
   );
 
   const runAnalysis = useCallback(
-    async (resolvedQuery: string) => {
+    async (resolvedQuery: string, intent?: CapturedIntent | null) => {
       setQuery(resolvedQuery);
       setPhase("analyzing");
       setVisibleCards(0);
@@ -102,9 +104,10 @@ export default function App() {
       clearTimers();
 
       try {
-        const result = await fetchAnalyze(resolvedQuery);
+        const result = await fetchAnalyze(resolvedQuery, intent ?? capturedIntent);
         const enriched = enrichStrategies(result.strategies, result.underlyingPrice);
         setParsedView(result.parsedView);
+        setDataProvenance(result.dataProvenance);
         setStrategies(enriched);
         setReasoningSteps(result.reasoningSteps);
         revealStrategies(enriched, result.reasoningSteps);
@@ -115,7 +118,7 @@ export default function App() {
         setPhase("input");
       }
     },
-    [clearTimers, revealStrategies],
+    [capturedIntent, clearTimers, revealStrategies],
   );
 
   const beginIntentCheck = useCallback(
@@ -173,9 +176,11 @@ export default function App() {
               typeof mapAgentBuildPayload
             >[0]["strategies"],
             underlying_price: buildPayload.underlying_price ?? buildPayload.parsed_view.underlying_price,
+            data_provenance: buildPayload.data_provenance,
           });
           const enriched = enrichStrategies(result.strategies, result.underlyingPrice);
           setParsedView(result.parsedView);
+          setDataProvenance(result.dataProvenance);
           setStrategies(enriched);
           setReasoningSteps(result.reasoningSteps);
           revealStrategies(enriched, result.reasoningSteps);
@@ -185,9 +190,9 @@ export default function App() {
         }
       }
 
-      await runAnalysis(query);
+      await runAnalysis(query, capturedIntent);
     },
-    [clearTimers, query, revealStrategies, runAnalysis],
+    [capturedIntent, clearTimers, query, revealStrategies, runAnalysis],
   );
 
   const handleScannerBuild = useCallback(
@@ -257,6 +262,7 @@ export default function App() {
     setCapturedIntent(null);
     setReasoningSteps([]);
     setParsedView(null);
+    setDataProvenance(null);
     setStrategies([]);
     setError(null);
   };
@@ -783,6 +789,17 @@ export default function App() {
                   </p>
                 </div>
 
+                {dataProvenance && (phase === "analyzing" || phase === "complete") && (
+                  <div
+                    style={{
+                      animation: "fadeIn 0.5s var(--ease) both",
+                      marginBottom: 16,
+                    }}
+                  >
+                    <DataProvenanceBanner provenance={dataProvenance} />
+                  </div>
+                )}
+
                 {visibleCards > 0 && (
                   <div
                     style={{
@@ -821,6 +838,7 @@ export default function App() {
                     accentColor={ACCENT_COLOR}
                     showGreeks
                     spotPrice={parsedView?.underlyingPrice ?? 0}
+                    dataProvenance={dataProvenance}
                   />
                 ))}
 

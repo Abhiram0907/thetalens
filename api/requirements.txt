@@ -10,3 +10,4 @@ httpx>=0.27.0
 yfinance>=0.2.54
 finnhub-python>=2.4.23
 slowapi>=0.1.9
+limits[redis]>=3.13.0

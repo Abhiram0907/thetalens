@@ -17,7 +17,7 @@ const TOOL_ICONS: Record<string, string> = {
 };
 
 const TOOL_LABELS: Record<string, string> = {
-  get_iv_rank: "IV Rank Analysis",
+  get_iv_rank: "Realized Vol Rank",
   get_upcoming_earnings: "Earnings Check",
   get_news_sentiment: "News Sentiment",
   get_historical_post_earnings_move: "Post-Earnings History",
@@ -130,7 +130,7 @@ function extractHighlights(tool: string, result: Record<string, unknown>): Highl
     const regime = String(result.regime ?? "");
     const rank = Number(result.iv_rank ?? 0);
     h.push({
-      label: "IV Rank",
+      label: "RV Rank",
       value: `${rank}`,
       color: regime === "High" ? "rt-red" : regime === "Low" ? "rt-green" : "rt-yellow",
     });

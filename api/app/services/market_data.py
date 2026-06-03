@@ -1,20 +1,24 @@
-"""Massive (Polygon) market data — reference contracts + aggregate bars."""
+"""Market snapshots: reference contracts + Black–Scholes or implied-vol pricing."""
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-
-import httpx
-
-from app.config import get_settings
+from app.services.market_types import SpotSource, VolInput
 from app.services.greeks import DEFAULT_IV, bs_price
+from app.services.market_cache import (
+    TTL_OPTION_IV_MAP,
+    TTL_POLYGON_REFS,
+    TTL_SNAPSHOT,
+    cached_async,
+)
+from app.services.polygon_client import PolygonClient, get_polygon_client
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_BASE = "https://api.polygon.io"
+class MarketDataError(Exception):
+    pass
 
 
 @dataclass(frozen=True)
@@ -42,129 +46,80 @@ class MarketSnapshot:
     contracts: list[OptionContract]
     front_expiry: date | None
     back_expiry: date | None
-
-
-class MarketDataError(Exception):
-    pass
+    spot_source: SpotSource = "yfinance"
+    pricing_vol_input: VolInput = "default"
 
 
 def _parse_date(value: str) -> date:
     return date.fromisoformat(value[:10])
 
 
-class PolygonClient:
-    def __init__(self, api_key: str, base_url: str = DEFAULT_BASE) -> None:
-        self.api_key = api_key
-        self.base_url = base_url.rstrip("/")
-
-    async def _get_json(self, client: httpx.AsyncClient, path: str, params: dict | None = None) -> dict:
-        params = dict(params or {})
-        params.setdefault("apiKey", self.api_key)
-        max_retries = 4
-        for attempt in range(max_retries):
-            r = await client.get(f"{self.base_url}{path}", params=params)
-            if r.status_code == 429:
-                wait = 12 * (attempt + 1)
-                logger.warning("Polygon 429 on %s — retry %d in %ds", path, attempt + 1, wait)
-                await asyncio.sleep(wait)
-                continue
-            if r.status_code == 403:
-                raise MarketDataError(r.json().get("message", "Polygon not authorized for this endpoint"))
-            r.raise_for_status()
-            data = r.json()
-            if data.get("status") == "NOT_AUTHORIZED":
-                raise MarketDataError(data.get("message", "Not authorized"))
-            return data
-        raise MarketDataError(f"Polygon rate-limited after {max_retries} retries on {path}")
-
-    async def get_spot(self, symbol: str) -> tuple[float, datetime | None]:
-        sym = symbol.upper()
+def _implied_vol_from_reference(ref: dict) -> float | None:
+    for key in ("implied_volatility", "iv"):
+        raw = ref.get(key)
+        if raw is None:
+            continue
         try:
-            from app.tools.providers import get_yfinance_client
-            prev = await get_yfinance_client().previous_close(sym)
-            if prev and prev.get("c"):
-                ts = prev.get("t")
-                as_of = datetime.fromtimestamp(ts / 1000, tz=timezone.utc) if ts else None
-                return float(prev["c"]), as_of
-        except Exception:
-            pass
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            data = await self._get_json(
-                client,
-                f"/v2/aggs/ticker/{sym}/prev",
-                {"adjusted": "true"},
-            )
-        results = data.get("results") or []
-        if not results:
-            raise MarketDataError(f"No price data for {sym}")
-        bar = results[0]
-        ts = bar.get("t")
-        as_of = datetime.fromtimestamp(ts / 1000, tz=timezone.utc) if ts else None
-        return float(bar["c"]), as_of
+            val = float(raw)
+            if val > 0:
+                return val
+        except (TypeError, ValueError):
+            continue
+    return None
 
-    async def _list_reference_contracts(
-        self,
-        symbol: str,
-        spot: float,
-        min_expiry: date,
-        max_expiry: date,
-        contract_type: str,
-    ) -> list[dict]:
-        sym = symbol.upper()
-        rows: list[dict] = []
-        params: dict = {
-            "underlying_ticker": sym,
-            "contract_type": contract_type,
-            "expiration_date.gte": min_expiry.isoformat(),
-            "expiration_date.lte": max_expiry.isoformat(),
-            "strike_price.gte": round(spot * 0.80, 2),
-            "strike_price.lte": round(spot * 1.20, 2),
-            "limit": 1000,
-            "sort": "strike_price",
-            "order": "asc",
-        }
-        path = "/v3/reference/options/contracts"
-        next_path: str | None = path
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            while next_path:
-                if next_path.startswith("http"):
-                    r = await client.get(next_path)
-                    r.raise_for_status()
-                    data = r.json()
-                else:
-                    data = await self._get_json(
-                        client, next_path, params if next_path == path else None
-                    )
-                rows.extend(data.get("results") or [])
-                next_url = data.get("next_url")
-                if next_url:
-                    if "apiKey=" not in next_url:
-                        sep = "&" if "?" in next_url else "?"
-                        next_url = f"{next_url}{sep}apiKey={self.api_key}"
-                    next_path = next_url
-                    params = {}
-                else:
-                    break
-        return rows
+def _resolve_contract_vol(
+    ref: dict,
+    *,
+    iv_by_ticker: dict[str, float],
+    fallback_sigma: float | None,
+) -> tuple[float, bool]:
+    """Return (sigma decimal, used_implied)."""
+    ticker = ref.get("ticker")
+    if ticker and ticker in iv_by_ticker:
+        return iv_by_ticker[ticker], True
+    ref_iv = _implied_vol_from_reference(ref)
+    if ref_iv is not None:
+        return ref_iv, True
+    if fallback_sigma is not None and fallback_sigma > 0:
+        return fallback_sigma, False
+    return DEFAULT_IV, False
 
-    def _price_contracts_bs(self, refs: list[dict], spot: float, sigma: float | None = None) -> list[OptionContract]:
-        """Price all contracts via Black-Scholes — zero Polygon API calls."""
-        vol = sigma or DEFAULT_IV
-        out: list[OptionContract] = []
-        for ref in refs:
-            ticker = ref.get("ticker")
-            strike = ref.get("strike_price")
-            expiry = ref.get("expiration_date")
-            if not ticker or strike is None or not expiry:
-                continue
-            ctype = (ref.get("contract_type") or "put").lower()
-            expiry_date = _parse_date(expiry)
-            t = max((expiry_date - date.today()).days, 1) / 365.0
-            mid = bs_price(spot, float(strike), t, vol, is_call=ctype == "call")
-            if mid is None or mid <= 0:
-                continue
-            out.append(OptionContract(
+
+def _price_contracts_bs(
+    refs: list[dict],
+    spot: float,
+    *,
+    fallback_sigma: float | None = None,
+    iv_by_ticker: dict[str, float] | None = None,
+) -> tuple[list[OptionContract], VolInput]:
+    iv_map = iv_by_ticker or {}
+    out: list[OptionContract] = []
+    used_implied = False
+    used_realized = False
+
+    for ref in refs:
+        ticker = ref.get("ticker")
+        strike = ref.get("strike_price")
+        expiry = ref.get("expiration_date")
+        if not ticker or strike is None or not expiry:
+            continue
+        ctype = (ref.get("contract_type") or "put").lower()
+        expiry_date = _parse_date(expiry)
+        t = max((expiry_date - date.today()).days, 1) / 365.0
+        vol, from_implied = _resolve_contract_vol(
+            ref, iv_by_ticker=iv_map, fallback_sigma=fallback_sigma
+        )
+        if from_implied:
+            used_implied = True
+        elif fallback_sigma is not None and fallback_sigma > 0:
+            used_realized = True
+
+        mid = bs_price(spot, float(strike), t, vol, is_call=ctype == "call")
+        if mid is None or mid <= 0:
+            continue
+        out.append(
+            OptionContract(
                 ticker=ticker,
                 strike=float(strike),
                 expiry=expiry_date,
@@ -173,99 +128,197 @@ class PolygonClient:
                 bid=None,
                 ask=None,
                 open_interest=0,
-                iv=None,
+                iv=vol if from_implied else None,
                 delta=None,
                 gamma=None,
                 theta=None,
                 vega=None,
-            ))
-        return out
-
-    async def load_snapshot(self, symbol: str, target_dte: int = 21, sigma: float | None = None) -> MarketSnapshot:
-        sym = symbol.upper()
-        spot, as_of = await self.get_spot(sym)
-        today = date.today()
-        min_exp = today
-        max_exp = today.fromordinal(
-            today.toordinal() + max(target_dte + 120, target_dte * 2 + 21, 55)
+            )
         )
 
-        put_refs = await self._list_reference_contracts(sym, spot, min_exp, max_exp, "put")
-        call_refs = await self._list_reference_contracts(sym, spot, min_exp, max_exp, "call")
-        refs = put_refs + call_refs
-        if not put_refs:
-            raise MarketDataError(
-                f"No listed options for {sym}. Check the ticker is a US equity with an options market."
+    if used_implied:
+        vol_input: VolInput = "implied"
+    elif used_realized:
+        vol_input = "realized_30d"
+    else:
+        vol_input = "default"
+    return out, vol_input
+
+
+async def get_spot(symbol: str, client: PolygonClient) -> tuple[float, datetime | None, SpotSource]:
+    sym = symbol.upper()
+    try:
+        from app.tools.providers import get_yfinance_client
+
+        prev = await get_yfinance_client().previous_close(sym)
+        if prev and prev.get("c"):
+            ts = prev.get("t")
+            as_of = datetime.fromtimestamp(ts / 1000, tz=timezone.utc) if ts else None
+            return float(prev["c"]), as_of, "yfinance"
+    except Exception:
+        pass
+
+    bar = await client.previous_close(sym)
+    if not bar:
+        raise MarketDataError(f"No price data for {sym}")
+    ts = bar.get("t")
+    as_of = datetime.fromtimestamp(ts / 1000, tz=timezone.utc) if ts else None
+    return float(bar["c"]), as_of, "polygon"
+
+
+async def _load_iv_map(client: PolygonClient, symbol: str) -> dict[str, float]:
+    key = f"poly:ivmap:{symbol.upper()}"
+    return await cached_async(
+        key,
+        TTL_OPTION_IV_MAP,
+        lambda: client.fetch_option_iv_map(symbol),
+    )
+
+
+async def load_snapshot(
+    symbol: str,
+    target_dte: int = 21,
+    sigma: float | None = None,
+) -> MarketSnapshot:
+    sym = symbol.upper()
+    client = get_polygon_client()
+    spot, as_of, spot_source = await get_spot(sym, client)
+    today = date.today()
+    min_exp = today
+    max_exp = today.fromordinal(
+        today.toordinal() + max(target_dte + 120, target_dte * 2 + 21, 55)
+    )
+
+    async def _puts() -> list[dict]:
+        k = f"poly:refs:{sym}:put:{min_exp}:{max_exp}:{round(spot, 2)}"
+        return await cached_async(
+            k,
+            TTL_POLYGON_REFS,
+            lambda: client.list_options_reference_contracts(
+                sym, spot, min_exp, max_exp, "put"
+            ),
+        )
+
+    async def _calls() -> list[dict]:
+        k = f"poly:refs:{sym}:call:{min_exp}:{max_exp}:{round(spot, 2)}"
+        return await cached_async(
+            k,
+            TTL_POLYGON_REFS,
+            lambda: client.list_options_reference_contracts(
+                sym, spot, min_exp, max_exp, "call"
+            ),
+        )
+
+    put_refs, call_refs = await _puts(), await _calls()
+    refs = put_refs + call_refs
+    if not put_refs:
+        raise MarketDataError(
+            f"No listed options for {sym}. Check the ticker is a US equity with an options market."
+        )
+
+    expiries = sorted({r["expiration_date"] for r in put_refs if r.get("expiration_date")})
+
+    def near_dte(dte: int) -> str:
+        return min(expiries, key=lambda e: abs((_parse_date(e) - today).days - dte))
+
+    front_s = near_dte(target_dte)
+    back_target = target_dte + 90 if target_dte >= 60 else min(target_dte * 2, 42)
+    back_s = near_dte(back_target)
+    if back_s == front_s and len(expiries) > 1:
+        later = [e for e in expiries if e > front_s]
+        back_s = later[0] if later else front_s
+
+    ratios = [0.91, 0.93, 0.95, 0.96, 0.98, 1.0, 1.03, 1.05, 1.1, 1.2]
+    targets: set[tuple[str, str, float]] = set()
+    for exp in (front_s, back_s):
+        for ratio in ratios:
+            strike = round(spot * ratio, 2)
+            targets.add((exp, "put", strike))
+            targets.add((exp, "call", strike))
+
+    def nearest_ref(exp: str, strike: float, ctype: str) -> dict | None:
+        pool = [
+            r
+            for r in refs
+            if r.get("expiration_date") == exp
+            and (r.get("contract_type") or "put").lower() == ctype
+        ]
+        if not pool:
+            return None
+        return min(pool, key=lambda r: abs(float(r["strike_price"]) - strike))
+
+    selected_refs: list[dict] = []
+    seen: set[str] = set()
+    for exp, ctype, strike in targets:
+        ref = nearest_ref(exp, strike, ctype)
+        if ref and ref["ticker"] not in seen:
+            seen.add(ref["ticker"])
+            selected_refs.append(ref)
+
+    iv_by_ticker = await _load_iv_map(client, sym)
+    if not iv_by_ticker:
+        for ref in selected_refs:
+            t = ref.get("ticker")
+            ref_iv = _implied_vol_from_reference(ref)
+            if t and ref_iv is not None:
+                iv_by_ticker[t] = ref_iv
+
+    contracts, vol_input = _price_contracts_bs(
+        selected_refs,
+        spot,
+        fallback_sigma=sigma,
+        iv_by_ticker=iv_by_ticker,
+    )
+    if not contracts:
+        raise MarketDataError(f"Could not price options for {sym}")
+
+    if vol_input == "default" and iv_by_ticker:
+        front_ivs = [
+            iv_by_ticker[r["ticker"]]
+            for r in selected_refs
+            if r.get("ticker") in iv_by_ticker
+            and r.get("expiration_date") == front_s
+        ]
+        if front_ivs:
+            logger.debug(
+                "%s: chain IV available but not matched to selected strikes (n=%d)",
+                sym,
+                len(front_ivs),
             )
 
-        expiries = sorted({r["expiration_date"] for r in put_refs if r.get("expiration_date")})
+    front = _parse_date(front_s)
+    back = _parse_date(back_s)
 
-        def near_dte(dte: int) -> str:
-            return min(expiries, key=lambda e: abs((_parse_date(e) - today).days - dte))
-
-        front_s = near_dte(target_dte)
-        back_target = target_dte + 90 if target_dte >= 60 else min(target_dte * 2, 42)
-        back_s = near_dte(back_target)
-        if back_s == front_s and len(expiries) > 1:
-            later = [e for e in expiries if e > front_s]
-            back_s = later[0] if later else front_s
-
-        ratios = [0.91, 0.93, 0.95, 0.96, 0.98, 1.0, 1.03, 1.05, 1.1, 1.2]
-        targets: set[tuple[str, str, float]] = set()
-        for exp in (front_s, back_s):
-            for ratio in ratios:
-                strike = round(spot * ratio, 2)
-                targets.add((exp, "put", strike))
-                targets.add((exp, "call", strike))
-
-        def nearest_ref(exp: str, strike: float, ctype: str) -> dict | None:
-            pool = [
-                r
-                for r in refs
-                if r.get("expiration_date") == exp
-                and (r.get("contract_type") or "put").lower() == ctype
-            ]
-            if not pool:
-                return None
-            return min(pool, key=lambda r: abs(float(r["strike_price"]) - strike))
-
-        selected_refs: list[dict] = []
-        seen: set[str] = set()
-        for exp, ctype, strike in targets:
-            ref = nearest_ref(exp, strike, ctype)
-            if ref and ref["ticker"] not in seen:
-                seen.add(ref["ticker"])
-                selected_refs.append(ref)
-
-        contracts = self._price_contracts_bs(selected_refs, spot, sigma)
-        if not contracts:
-            raise MarketDataError(f"Could not price options for {sym}")
-
-        front = _parse_date(front_s)
-        back = _parse_date(back_s)
-
-        return MarketSnapshot(
-            symbol=sym,
-            spot=spot,
-            as_of=as_of,
-            contracts=contracts,
-            front_expiry=front,
-            back_expiry=back,
-        )
+    return MarketSnapshot(
+        symbol=sym,
+        spot=spot,
+        as_of=as_of,
+        contracts=contracts,
+        front_expiry=front,
+        back_expiry=back,
+        spot_source=spot_source,
+        pricing_vol_input=vol_input,
+    )
 
 
-def get_polygon_client() -> PolygonClient:
-    settings = get_settings()
-    if not settings.polygon_api_key:
-        raise MarketDataError("POLYGON_API_KEY is not set in .env")
-    return PolygonClient(settings.polygon_api_key, settings.polygon_base_url)
+async def load_snapshot_cached(
+    symbol: str,
+    target_dte: int = 21,
+    sigma: float | None = None,
+) -> MarketSnapshot:
+    sigma_key = f"{sigma:.5f}" if sigma is not None and sigma > 0 else "default"
+    key = f"snap:{symbol.upper()}:{target_dte}:{sigma_key}"
+    return await cached_async(
+        key,
+        TTL_SNAPSHOT,
+        lambda: load_snapshot(symbol, target_dte, sigma=sigma),
+    )
 
 
 def estimate_iv_rank(contracts: list[OptionContract], spot: float) -> tuple[int, str]:
     if not contracts:
         return 50, "50th percentile (estimated)"
     atm = min(contracts, key=lambda c: abs(c.strike - spot))
-    # Without IV history, use moneyness of long put premium as rough signal
     pct = int(max(25, min(75, 50 + (spot - atm.strike) / spot * 100)))
     suffix = "th"
     if pct % 10 == 1 and pct != 11:

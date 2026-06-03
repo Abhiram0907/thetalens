@@ -87,76 +87,11 @@ def tools_as_openai_schema() -> list[dict]:
     return out
 
 
-# ---------------------------------------------------------------------------
-# Polygon helper (thin wrapper – import your real client here)
-# ---------------------------------------------------------------------------
+from app.services.market_cache import TTL_DAILY_BARS, cached_async
+from app.services.polygon_client import PolygonClient
 
-class PolygonClient:
-    """
-    Minimal Polygon REST wrapper.
-    Replace with your actual market_data.py imports.
-    """
-
-    def __init__(self, api_key: str, base_url: str = "https://api.polygon.io"):
-        self.api_key = api_key
-        self.base = base_url
-
-    async def _get(self, path: str, params: dict | None = None) -> dict:
-        import asyncio
-        import httpx
-        params = params or {}
-        params["apiKey"] = self.api_key
-        max_retries = 3
-        for attempt in range(max_retries):
-            async with httpx.AsyncClient(timeout=20) as c:
-                r = await c.get(f"{self.base}{path}", params=params)
-                if r.status_code == 429:
-                    wait = 12 * (attempt + 1)
-                    await asyncio.sleep(wait)
-                    continue
-                r.raise_for_status()
-                return r.json()
-        raise httpx.HTTPStatusError(
-            "Rate limited after retries", request=r.request, response=r
-        )
-
-    async def daily_bars(self, ticker: str, from_date: str, to_date: str) -> list[dict]:
-        data = await self._get(
-            f"/v2/aggs/ticker/{ticker}/range/1/day/{from_date}/{to_date}",
-            {"adjusted": "true", "sort": "asc", "limit": "5000"},
-        )
-        return data.get("results", [])
-
-    async def ticker_news(self, ticker: str, limit: int = 10) -> list[dict]:
-        data = await self._get(
-            "/v2/reference/news",
-            {"ticker": ticker, "limit": str(limit), "sort": "published_utc", "order": "desc"},
-        )
-        return data.get("results", [])
-
-    async def previous_close(self, ticker: str) -> dict | None:
-        data = await self._get(f"/v2/aggs/ticker/{ticker}/prev")
-        results = data.get("results", [])
-        return results[0] if results else None
-
-    async def options_contracts(self, ticker: str, expiration_gte: str | None = None,
-                                 expiration_lte: str | None = None, limit: int = 250) -> list[dict]:
-        params: dict[str, str] = {
-            "underlying_ticker": ticker,
-            "limit": str(limit),
-            "sort": "expiration_date",
-            "order": "asc",
-        }
-        if expiration_gte:
-            params["expiration_date.gte"] = expiration_gte
-        if expiration_lte:
-            params["expiration_date.lte"] = expiration_lte
-        data = await self._get("/v3/reference/options/contracts", params)
-        return data.get("results", [])
-
-    async def related_companies(self, ticker: str) -> list[str]:
-        data = await self._get(f"/v1/related-companies/{ticker}")
-        return [r["ticker"] for r in data.get("results", [])]
+# Re-export for agent routes and scanner
+__all__ = ["PolygonClient"]
 
 
 # ---------------------------------------------------------------------------
@@ -164,15 +99,21 @@ class PolygonClient:
 # ---------------------------------------------------------------------------
 
 async def _get_daily_bars(ticker: str, from_date: str, to_date: str, polygon_client: PolygonClient) -> list[dict]:
-    """Fetch daily bars from yfinance first, fallback to Polygon."""
-    from app.tools.providers import get_yfinance_client
-    try:
-        bars = await get_yfinance_client().daily_bars(ticker, from_date, to_date)
-        if bars and len(bars) > 5:
-            return bars
-    except Exception:
-        pass
-    return await polygon_client.daily_bars(ticker, from_date, to_date)
+    """Fetch daily bars from yfinance first, fallback to Polygon (cached)."""
+    key = f"bars:{ticker.upper()}:{from_date}:{to_date}"
+
+    async def _fetch() -> list[dict]:
+        from app.tools.providers import get_yfinance_client
+
+        try:
+            bars = await get_yfinance_client().daily_bars(ticker, from_date, to_date)
+            if bars and len(bars) > 5:
+                return bars
+        except Exception:
+            pass
+        return await polygon_client.daily_bars(ticker, from_date, to_date)
+
+    return await cached_async(key, TTL_DAILY_BARS, _fetch)
 
 
 async def _get_previous_close(ticker: str, polygon_client: PolygonClient) -> dict | None:

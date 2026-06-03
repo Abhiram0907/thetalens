@@ -8,8 +8,9 @@ from pydantic import BaseModel, Field
 from app.config import get_settings
 from app.core.security import UPSTREAM_UNAVAILABLE, safe_client_message
 from app.middleware.rate_limit import limiter
+from app.middleware.rate_limits import SCANNER
 from app.services.scanner import ScannerStock, SeedContext, scan_similar
-from app.tools.registry import PolygonClient
+from app.services.polygon_client import PolygonClient, get_polygon_client
 
 router = APIRouter(prefix="/api/scanner", tags=["scanner"])
 
@@ -28,11 +29,11 @@ def _get_polygon_client() -> PolygonClient:
     settings = get_settings()
     if not settings.polygon_api_key:
         raise HTTPException(503, "POLYGON_API_KEY not configured")
-    return PolygonClient(api_key=settings.polygon_api_key, base_url=settings.polygon_base_url)
+    return get_polygon_client()
 
 
 @router.post("", response_model=ScannerResponse)
-@limiter.limit("20/minute")
+@limiter.limit(SCANNER)
 async def scan_stocks(
     request: Request,
     req: Annotated[ScannerRequest, Body()],

@@ -6,29 +6,36 @@ and yields SSE events for each thought/tool-call/result. When the LLM emits a
 final answer (no more tool calls), it returns an enriched context dict that feeds
 into the existing strategy_builder.
 
-Works with Google GenAI (Gemma / Gemini) function calling. Falls back to a
-structured-prompt approach if function calling is unavailable.
+Uses Google GenAI (Gemma / Gemini) function calling.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, AsyncIterator
 
-from pydantic import BaseModel
+import httpx
 
-from app.tools.registry import (
-    PolygonClient,
-    derive_magnitude,
-    get_all_tools,
-    get_tool,
-    tools_as_openai_schema,
-)
+from app.core.security import LLM_UNAVAILABLE, redact_secrets, sanitize_tool_result
+from app.services.polygon_client import PolygonClient
 from app.services.strategy_builder import parse_horizon_days
+from app.tools.registry import derive_magnitude, get_tool, tools_as_openai_schema
+
+logger = logging.getLogger("thetalens.agent")
+
+DIRECTION_SIGNAL_TOOLS = frozenset({
+    "get_news_sentiment",
+    "get_upcoming_earnings",
+    "get_iv_rank",
+    "get_expected_move",
+})
+
+MAGNITUDE_TOOLS = frozenset({"calculate_magnitude", "assess_structure_fit"})
 
 
 # ---------------------------------------------------------------------------
@@ -170,12 +177,25 @@ def _infer_direction_from_context(enriched_context: dict[str, Any]) -> tuple[str
     return "neutral", "directional evidence is mixed, so the agent is using a neutral/volatility view"
 
 
+def _apply_direction_inference(enriched_context: dict[str, Any]) -> None:
+    inferred, reason = _infer_direction_from_context(enriched_context)
+    enriched_context["direction"] = inferred
+    enriched_context["direction_inference"] = {
+        "inferred": True,
+        "direction": inferred,
+        "reason": reason,
+    }
+
+
+def _should_track_direction(enriched_context: dict[str, Any]) -> bool:
+    return (
+        _needs_direction_inference(enriched_context.get("direction"))
+        or bool(enriched_context.get("direction_inference"))
+    )
+
+
 def _format_llm_error_internal(exc: Exception) -> str:
     """Detailed error for server logs only."""
-    import httpx
-
-    from app.core.security import redact_secrets
-
     if isinstance(exc, httpx.HTTPStatusError):
         detail = exc.response.text[:500] if exc.response is not None else ""
         msg = f"HTTP {exc.response.status_code}: {detail or exc.response.reason_phrase}"
@@ -186,17 +206,6 @@ def _format_llm_error_internal(exc: Exception) -> str:
     if msg:
         return redact_secrets(msg)
     return f"{type(exc).__name__} (no details)"
-
-
-def _format_llm_error_client(exc: Exception) -> str:
-    """Generic message for SSE clients."""
-    from app.core.security import LLM_UNAVAILABLE
-
-    import httpx
-
-    if isinstance(exc, (httpx.HTTPError, RuntimeError)):
-        return LLM_UNAVAILABLE
-    return LLM_UNAVAILABLE
 
 
 def _coerce_tool_arguments(name: str, arguments: dict) -> dict:
@@ -248,32 +257,20 @@ class ThesisAgent:
         self.api_key = api_key
         self.temperature = temperature
 
-    # ------------------------------------------------------------------
-    # LLM call (supports Google GenAI function calling)
-    # ------------------------------------------------------------------
-
     async def _call_llm(self, messages: list[dict], tools: list[dict]) -> dict:
-        """
-        Call the LLM with function-calling support.
-        Returns the raw response dict with 'content' and optional 'tool_calls'.
-        """
-        if self.llm_provider == "google":
-            return await self._call_google(messages, tools)
-        else:
-            return await self._call_fallback(messages)
+        """Call the LLM with function-calling support."""
+        if self.llm_provider != "google":
+            raise RuntimeError(f"Unsupported LLM provider: {self.llm_provider}")
+        return await self._call_google(messages, tools)
 
     async def _call_google(self, messages: list[dict], tools: list[dict]) -> dict:
         """Google GenAI via REST (works with Gemma and Gemini models)."""
-        import httpx
-
-        # Convert OpenAI-style messages to Google format
         google_contents = []
         for msg in messages:
             if msg["role"] == "system":
-                continue  # handled separately
+                continue
             role = "model" if msg["role"] == "assistant" else "user"
 
-            # Handle tool results
             if msg["role"] == "tool":
                 google_contents.append({
                     "role": "user",
@@ -290,7 +287,6 @@ class ThesisAgent:
             if isinstance(msg.get("content"), str) and msg["content"]:
                 parts.append({"text": msg["content"]})
 
-            # Handle assistant tool calls
             if msg.get("tool_calls"):
                 for tc in msg["tool_calls"]:
                     part: dict[str, Any] = {
@@ -306,14 +302,12 @@ class ThesisAgent:
             if parts:
                 google_contents.append({"role": role, "parts": parts})
 
-        # Build Google function declarations
         google_tools = []
         if tools:
             declarations = []
             for t in tools:
                 fn = t["function"]
                 params = dict(fn.get("parameters", {}))
-                # Google API doesn't accept empty required arrays well
                 if "required" in params and not params["required"]:
                     del params["required"]
                 declarations.append({
@@ -351,13 +345,11 @@ class ThesisAgent:
                 raise RuntimeError(_format_llm_error_internal(exc)) from exc
             data = resp.json()
 
-        # Surface API-level errors (e.g. blocked, quota)
         if "error" in data:
             err = data["error"]
             msg = err.get("message") or err.get("status") or json.dumps(err)
             raise RuntimeError(f"Google API error: {msg}")
 
-        # Parse response
         candidates = data.get("candidates", [])
         if not candidates:
             return {"content": "No response from model.", "tool_calls": []}
@@ -390,41 +382,7 @@ class ThesisAgent:
             "tool_calls": tool_calls,
         }
 
-    async def _call_fallback(self, messages: list[dict]) -> dict:
-        """
-        Fallback: prompt-based tool calling for models without function-calling.
-        Parses JSON tool calls from the model's text output.
-        """
-        # Append tool instruction to the last user message
-        tool_specs = tools_as_openai_schema()
-        tool_instruction = (
-            "\n\nAvailable tools:\n"
-            + json.dumps(tool_specs, indent=2)
-            + '\n\nTo call a tool, output EXACTLY: {"tool_call": {"name": "...", "arguments": {...}}}'
-            + "\nTo give your final answer, just write text without a tool_call JSON block."
-        )
-
-        modified = list(messages)
-        for i in range(len(modified) - 1, -1, -1):
-            if modified[i]["role"] == "user":
-                modified[i] = dict(modified[i])
-                modified[i]["content"] = (modified[i].get("content") or "") + tool_instruction
-                break
-
-        # Use langchain or direct API call — simplified here
-        # In production, call your existing intent_chain LLM
-        return {"content": "Fallback mode — tools unavailable.", "tool_calls": []}
-
-    # ------------------------------------------------------------------
-    # Tool execution
-    # ------------------------------------------------------------------
-
     async def _execute_tool(self, name: str, arguments: dict) -> dict:
-        import logging
-
-        from app.core.security import sanitize_tool_result
-
-        logger = logging.getLogger("thetalens.agent")
         tool_spec = get_tool(name)
         if not tool_spec:
             return {"error": "Unknown tool"}
@@ -433,21 +391,12 @@ class ThesisAgent:
             coerced = _coerce_tool_arguments(name, arguments)
             result = await tool_spec.fn(**coerced, polygon_client=self.polygon)
             return sanitize_tool_result(result)
-        except Exception as e:
+        except Exception:
             logger.exception("Tool %s failed", name)
             return sanitize_tool_result({"error": "Tool execution failed"})
 
-    # ------------------------------------------------------------------
-    # Main agent loop
-    # ------------------------------------------------------------------
-
     async def run(self, parsed_intent: dict) -> AsyncIterator[AgentEvent]:
-        """
-        Run the agent loop. Yields AgentEvent objects for SSE streaming.
-
-        parsed_intent should include:
-            underlying, direction, magnitude, horizon, risk_budget, summary
-        """
+        """Run the agent loop. Yields AgentEvent objects for SSE streaming."""
         ticker = parsed_intent.get("underlying", "SPY")
         direction = parsed_intent.get("direction") or "infer"
         horizon = parsed_intent.get("horizon", "30 days")
@@ -494,50 +443,40 @@ class ThesisAgent:
             except Exception as e:
                 yield AgentEvent(
                     type=EventType.ERROR,
-                    data={"message": _format_llm_error_client(e), "step": step},
+                    data={"message": LLM_UNAVAILABLE, "step": step},
                 )
                 break
 
             text = response.get("content", "")
             tool_calls = response.get("tool_calls", [])
 
-            # Emit any thinking/reasoning text
             if text.strip():
                 yield AgentEvent(
                     type=EventType.THINKING if tool_calls else EventType.REASONING,
                     data={"message": text.strip(), "step": step},
                 )
 
-            # No more tool calls → final answer
             if not tool_calls:
                 await self._ensure_magnitude(enriched_context)
                 enriched_context["agent_analysis"] = text.strip()
-                yield AgentEvent(
-                    type=EventType.CONTEXT,
-                    data=enriched_context,
-                )
+                yield AgentEvent(type=EventType.CONTEXT, data=enriched_context)
                 break
 
-            # Execute tool calls
-            assistant_msg: dict[str, Any] = {"role": "assistant", "content": text}
-            if tool_calls:
-                assistant_msg["tool_calls"] = tool_calls
-            messages.append(assistant_msg)
+            messages.append({
+                "role": "assistant",
+                "content": text,
+                "tool_calls": tool_calls,
+            })
 
             for tc in tool_calls:
                 fn_name = tc["function"]["name"]
                 fn_args = json.loads(tc["function"]["arguments"])
-                if fn_name in {"calculate_magnitude", "assess_structure_fit"}:
+
+                if fn_name in MAGNITUDE_TOOLS:
                     arg_direction = fn_args.get("direction", enriched_context.get("direction"))
                     if _needs_direction_inference(arg_direction) or enriched_context.get("direction_inference"):
-                        inferred, reason = _infer_direction_from_context(enriched_context)
-                        enriched_context["direction"] = inferred
-                        enriched_context["direction_inference"] = {
-                            "inferred": True,
-                            "direction": inferred,
-                            "reason": reason,
-                        }
-                        fn_args["direction"] = inferred
+                        _apply_direction_inference(enriched_context)
+                        fn_args["direction"] = enriched_context["direction"]
 
                 yield AgentEvent(
                     type=EventType.TOOL_CALL,
@@ -551,50 +490,28 @@ class ThesisAgent:
                     data={"tool": fn_name, "result": result, "step": step},
                 )
 
-                # Store in enriched context
                 enriched_context[fn_name] = result
-                should_refresh_direction = (
-                    _needs_direction_inference(enriched_context.get("direction"))
-                    or bool(enriched_context.get("direction_inference"))
-                )
-                if should_refresh_direction and fn_name in {
-                    "get_news_sentiment",
-                    "get_upcoming_earnings",
-                    "get_iv_rank",
-                    "get_expected_move",
-                }:
-                    inferred, reason = _infer_direction_from_context(enriched_context)
-                    enriched_context["direction"] = inferred
-                    enriched_context["direction_inference"] = {
-                        "inferred": True,
-                        "direction": inferred,
-                        "reason": reason,
-                    }
+
+                if _should_track_direction(enriched_context) and fn_name in DIRECTION_SIGNAL_TOOLS:
+                    _apply_direction_inference(enriched_context)
+
                 if fn_name == "calculate_magnitude" and result.get("magnitude"):
                     enriched_context["magnitude"] = result["magnitude"]
 
-                # Add tool result to conversation
                 messages.append({
                     "role": "tool",
                     "name": fn_name,
                     "content": json.dumps(result),
                 })
 
-                # Small delay so frontend can render
                 await asyncio.sleep(0.1)
 
         yield AgentEvent(type=EventType.DONE, data={"steps": step + 1})
 
     async def _ensure_magnitude(self, enriched_context: dict[str, Any]) -> None:
         """Guarantee magnitude is set from calculate_magnitude tool or market data."""
-        if _needs_direction_inference(enriched_context.get("direction")) or enriched_context.get("direction_inference"):
-            inferred, reason = _infer_direction_from_context(enriched_context)
-            enriched_context["direction"] = inferred
-            enriched_context["direction_inference"] = {
-                "inferred": True,
-                "direction": inferred,
-                "reason": reason,
-            }
+        if _should_track_direction(enriched_context):
+            _apply_direction_inference(enriched_context)
 
         mag = enriched_context.get("calculate_magnitude") or {}
         direction = enriched_context.get("direction", "neutral")
@@ -603,9 +520,8 @@ class ThesisAgent:
             not mag_direction
             or DIRECTION_ALIASES.get(mag_direction, mag_direction) == _normal_direction(direction)
         )
-        if enriched_context.get("magnitude"):
-            if magnitude_matches_direction:
-                return
+        if enriched_context.get("magnitude") and magnitude_matches_direction:
+            return
 
         if mag.get("magnitude") and magnitude_matches_direction:
             enriched_context["magnitude"] = mag["magnitude"]
@@ -626,20 +542,13 @@ class ThesisAgent:
             enriched_context["magnitude"] = "±5% range"
 
 
-# ---------------------------------------------------------------------------
-# Convenience runner for non-streaming contexts
-# ---------------------------------------------------------------------------
-
 async def run_thesis_agent(
     parsed_intent: dict,
     polygon_api_key: str,
     llm_api_key: str | None = None,
     model: str = "gemma-4-26b-a4b-it",
 ) -> dict:
-    """
-    Non-streaming convenience wrapper. Returns the full enriched context.
-    Use for testing or when SSE is not needed.
-    """
+    """Non-streaming convenience wrapper. Returns the full enriched context."""
     client = PolygonClient(api_key=polygon_api_key)
     agent = ThesisAgent(
         polygon_client=client,
@@ -648,7 +557,7 @@ async def run_thesis_agent(
     )
 
     events: list[dict] = []
-    enriched = {}
+    enriched: dict[str, Any] = {}
     async for event in agent.run(parsed_intent):
         events.append({"type": event.type.value, "data": event.data})
         if event.type == EventType.CONTEXT:

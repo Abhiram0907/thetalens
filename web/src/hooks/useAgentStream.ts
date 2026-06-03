@@ -24,11 +24,21 @@ export type AgentBuildPayload = {
     risk_budget: string;
     underlying: string;
     underlying_price: number;
+    realized_vol_rank?: number;
+    realized_vol_regime?: string;
+    realized_vol_label?: string;
     iv_rank: number;
     iv_label: string;
   };
   reasoning_steps?: Array<{ node: string; message: string; delay: number }>;
   underlying_price?: number;
+  data_provenance?: {
+    spot_source: "yfinance" | "polygon";
+    spot_as_of: string | null;
+    options_price_method: "black_scholes_modeled";
+    vol_input: "realized_30d" | "implied" | "default";
+    data_age_warning: string | null;
+  };
 };
 
 // ---------------------------------------------------------------------------

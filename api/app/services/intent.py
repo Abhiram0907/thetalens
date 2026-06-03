@@ -1,7 +1,8 @@
 import re
 
 from app.core.dependencies import get_intent_chain
-from app.services.field_parser import parse_risk_budget_text
+from app.services.field_parser import parse_magnitude_text, parse_risk_budget_text
+from app.services.strategy_builder import parse_horizon_days
 from app.schemas.intent import IntentSlots
 from app.schemas.analysis import (
     CapturedIntent,
@@ -20,6 +21,53 @@ _NOISE_WORDS = {
     "WILL", "THAN", "FROM", "THEM", "SOME", "JUST", "VERY", "ABOUT",
     "DOWN", "LONG", "TERM",
 }
+
+def slots_to_view_updates(slots: IntentSlots) -> dict:
+    """Map intent slots to ParsedView fields (shared by analyze path)."""
+    updates: dict = {}
+    if slots.underlying:
+        updates["underlying"] = slots.underlying.upper()
+    if slots.direction:
+        icons = {"Bearish": "↓", "Bullish": "↑", "Neutral": "→"}
+        updates["direction"] = slots.direction
+        updates["direction_icon"] = icons.get(slots.direction, "→")
+    if slots.magnitude:
+        updates["magnitude"] = parse_magnitude_text(slots.magnitude)
+    if slots.horizon:
+        updates["horizon_label"] = slots.horizon
+        days = parse_horizon_days(slots.horizon)
+        updates["horizon"] = f"{days} days"
+    if slots.risk_budget:
+        updates["risk_budget"] = parse_risk_budget_text(slots.risk_budget)
+    return updates
+
+
+def slots_from_captured(captured: CapturedIntent) -> IntentSlots:
+    direction = captured.direction
+    if direction not in ("Bearish", "Bullish", "Neutral"):
+        direction = None
+    mode = captured.mode if captured.mode in ("thesis", "scanner") else "thesis"
+    return IntentSlots(
+        underlying=captured.underlying,
+        direction=direction,
+        magnitude=captured.magnitude,
+        horizon=captured.horizon,
+        risk_budget=captured.risk_budget,
+        mode=mode,
+        confidence=100,
+        summary="",
+    )
+
+
+async def extract_intent_slots(query: str) -> IntentSlots:
+    """Single LLM intent extraction (with regex fallback)."""
+    q = query.strip()
+    try:
+        chain = get_intent_chain()
+        return await chain.ainvoke({"query": q})
+    except Exception:
+        return _fallback_slots(q)
+
 
 def _captured_from_slots(slots: IntentSlots) -> CapturedIntent:
     return CapturedIntent(
@@ -124,11 +172,7 @@ def _fallback_slots(query: str) -> IntentSlots:
 
 
 async def evaluate_intent(query: str) -> IntentResponse:
-    try:
-        chain = get_intent_chain()
-        slots: IntentSlots = await chain.ainvoke({"query": query.strip()})
-    except Exception:
-        slots = _fallback_slots(query.strip())
+    slots = await extract_intent_slots(query)
 
     captured = _captured_from_slots(slots)
     missing: list[str] = []

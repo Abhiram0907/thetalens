@@ -8,13 +8,14 @@ from app.core.disclaimer import DISCLAIMER_STANDARD
 from app.core.security import LLM_UNAVAILABLE
 from app.llm_config import get_llm_config
 from app.middleware.rate_limit import limiter
+from app.middleware.rate_limits import CHAT
 from app.schemas.chat import ChatRequest, ChatResponse
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
 
 @router.post("/chat", response_model=ChatResponse)
-@limiter.limit("30/minute")
+@limiter.limit(CHAT)
 async def chat(
     request: Request,
     body: Annotated[ChatRequest, Body()],
