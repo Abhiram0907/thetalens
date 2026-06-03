@@ -46,7 +46,7 @@ The frontend calls the API directly via `VITE_API_BASE` (required in production 
 | `FINNHUB_API_KEY` | No | Peers, news, earnings |
 | `CORS_ORIGINS` | Yes (prod) | Comma-separated frontend origin(s) |
 | `LLM_ACTIVE` | No | Default `gemini` |
-| `AGENT_MODEL` | No | Override default Gemma model |
+| `GOOGLE_MODEL` | No | Model alias: `flash` (default), `pro`, `gemma-26b` — see `api/llm.yaml` |
 
 Preview Vercel deploys (`*.vercel.app`) are allowed automatically when `CORS_ORIGINS` is set.
 
@@ -175,3 +175,12 @@ Vercel URL      ──►  Render CORS_ORIGINS
 - **SSE streaming** (`/api/agent/stream`) goes browser → Render directly; do not proxy through Vercel.
 - **Secrets** live only in Render/Vercel dashboards — never commit `.env` files.
 - Upgrade Render plan if agent runs hit timeout limits on long research sessions.
+
+## 6. Production scaling (100+ concurrent users)
+
+For a paid 2-month trial, see **[SCALING.md](SCALING.md)**. Summary:
+
+1. Sync [`render.yaml`](../render.yaml) — **Standard** plan, **3 instances**, **Redis** for shared rate limits.
+2. Upgrade **Polygon** off the free tier (5 req/min).
+3. Set billing alerts on **Google AI**; optionally try `AGENT_MODEL=gemini-2.5-flash` for lower latency.
+4. Tune `RATE_LIMIT_*` env vars if many users share one IP (corporate NAT).
