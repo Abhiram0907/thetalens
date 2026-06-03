@@ -309,8 +309,26 @@ export async function fetchIntent(query: string): Promise<IntentResult> {
   };
 }
 
-export async function fetchAnalyze(query: string): Promise<AnalyzeResult> {
-  const data = await postJson<ApiAnalyzeResponse>("/api/analyze", { query });
+function capturedToApi(captured: CapturedIntent): ApiCapturedIntent {
+  return {
+    underlying: captured.underlying,
+    direction: captured.direction,
+    magnitude: captured.magnitude,
+    horizon: captured.horizon,
+    risk_budget: captured.riskBudget,
+    mode: captured.mode,
+  };
+}
+
+export async function fetchAnalyze(
+  query: string,
+  captured?: CapturedIntent | null,
+): Promise<AnalyzeResult> {
+  const body: { query: string; captured?: ApiCapturedIntent } = { query };
+  if (captured) {
+    body.captured = capturedToApi(captured);
+  }
+  const data = await postJson<ApiAnalyzeResponse>("/api/analyze", body);
   return {
     parsedView: mapParsedView(data.parsed_view),
     reasoningSteps: mapReasoning(data.reasoning_steps),

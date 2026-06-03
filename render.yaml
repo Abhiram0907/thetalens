@@ -1,15 +1,28 @@
 # Render Blueprint — https://render.com/docs/blueprint-spec
 # Deploy: connect this repo in Render → New → Blueprint → apply this file.
 #
+# Production: Standard + horizontal autoscaling (Render Pro workspace) + Redis.
+# See docs/SCALING.md for provider upgrades (Massive, Finnhub, Google).
+#
 # After deploy, set VITE_API_BASE on Vercel to this service's URL (see docs/DEPLOYMENT.md).
-# CORS_ORIGINS defaults to https://thetalens.app in render.yaml.
 
 services:
+  - type: keyvalue
+    name: thetalens-redis
+    plan: starter
+    ipAllowList: [] # internal Render network only
+
   - type: web
     name: thetalens-api
     runtime: python
     region: oregon
-    plan: free
+    plan: standard
+    maxShutdownDelaySeconds: 120
+    scaling:
+      minInstances: 2
+      maxInstances: 6
+      targetCPUPercent: 70
+      targetMemoryPercent: 65
     rootDir: api
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
@@ -31,3 +44,8 @@ services:
         sync: false
       - key: CORS_ORIGINS
         value: https://thetalens.app,https://www.thetalens.app
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: thetalens-redis
+          property: connectionString

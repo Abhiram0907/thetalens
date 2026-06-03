@@ -44,7 +44,7 @@ Use `sync: false` in `render.yaml` so Blueprint never writes secrets to the repo
 - **Log redaction** — API keys and tokens are stripped from log output
 - **Safe client errors** — stack traces, upstream URLs, and provider responses are not returned to browsers
 - **Google API** — key sent via `x-goog-api-key` header, not URL query params
-- **Rate limiting** — per-IP limits on expensive endpoints (agent, scanner, analyze)
+- **Rate limiting** — per-IP limits on expensive endpoints; shared via Redis when `REDIS_URL` is set (multi-instance)
 - **CORS** — production allows only `thetalens.app` + your Vercel preview pattern (not all `*.vercel.app`)
 - **Docs disabled** — `/docs`, `/openapi.json` off in production
 - **Debug routes hidden** — `/api/agent/run` and `/api/runtime` return 404 in production unless admin key is set

@@ -12,6 +12,7 @@ from app.core.disclaimer import DISCLAIMER_STANDARD
 from app.core.security import LLM_UNAVAILABLE, UPSTREAM_UNAVAILABLE, safe_client_message
 from app.llm_config import get_llm_config
 from app.middleware.rate_limit import limiter
+from app.middleware.rate_limits import AGENT_RUN, AGENT_STREAM
 from app.services.market_data import MarketDataError, load_snapshot_cached
 from app.services.polygon_client import PolygonClient, get_polygon_client
 
@@ -105,7 +106,7 @@ def _extract_ticker(query: str) -> str:
 
 
 @router.post("/stream")
-@limiter.limit("8/minute")
+@limiter.limit(AGENT_STREAM)
 async def stream_thesis(
     request: Request,
     req: Annotated[ThesisRequest, Body()],
@@ -162,7 +163,7 @@ async def stream_thesis(
 
 
 @router.post("/run", response_model=ThesisResult)
-@limiter.limit("4/minute")
+@limiter.limit(AGENT_RUN)
 async def run_thesis(
     request: Request,
     req: Annotated[ThesisRequest, Body()],

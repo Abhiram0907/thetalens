@@ -95,7 +95,7 @@ export default function App() {
   );
 
   const runAnalysis = useCallback(
-    async (resolvedQuery: string) => {
+    async (resolvedQuery: string, intent?: CapturedIntent | null) => {
       setQuery(resolvedQuery);
       setPhase("analyzing");
       setVisibleCards(0);
@@ -104,7 +104,7 @@ export default function App() {
       clearTimers();
 
       try {
-        const result = await fetchAnalyze(resolvedQuery);
+        const result = await fetchAnalyze(resolvedQuery, intent ?? capturedIntent);
         const enriched = enrichStrategies(result.strategies, result.underlyingPrice);
         setParsedView(result.parsedView);
         setDataProvenance(result.dataProvenance);
@@ -118,7 +118,7 @@ export default function App() {
         setPhase("input");
       }
     },
-    [clearTimers, revealStrategies],
+    [capturedIntent, clearTimers, revealStrategies],
   );
 
   const beginIntentCheck = useCallback(
@@ -190,9 +190,9 @@ export default function App() {
         }
       }
 
-      await runAnalysis(query);
+      await runAnalysis(query, capturedIntent);
     },
-    [clearTimers, query, revealStrategies, runAnalysis],
+    [capturedIntent, clearTimers, query, revealStrategies, runAnalysis],
   );
 
   const handleScannerBuild = useCallback(
