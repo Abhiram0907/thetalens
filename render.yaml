@@ -2,9 +2,9 @@
 # Deploy: connect this repo in Render → New → Blueprint → apply this file.
 #
 # Production: Standard + horizontal autoscaling (Render Pro workspace) + Redis.
-# See docs/SCALING.md for provider upgrades (Massive, Finnhub, Google).
+# Set GOOGLE_API_KEY, POLYGON_API_KEY, FINNHUB_API_KEY in the Render dashboard.
 #
-# After deploy, set VITE_API_BASE on Vercel to this service's URL (see docs/DEPLOYMENT.md).
+# After deploy, set VITE_API_BASE on Vercel to this service's URL.
 
 services:
   - type: keyvalue

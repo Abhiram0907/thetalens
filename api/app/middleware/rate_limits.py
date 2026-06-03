@@ -1,4 +1,4 @@
-"""Env-configurable rate limit strings (evaluated at import; see docs/SCALING.md)."""
+"""Env-configurable rate limit strings (evaluated at import; override via RATE_LIMIT_* env)."""
 
 from __future__ import annotations
 

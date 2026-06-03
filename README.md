@@ -186,8 +186,7 @@ Production runs as two services:
 3. Set `VITE_API_BASE` on Vercel → `https://thetalens-api.onrender.com`.
 4. Set secrets on Render per [SECURITY.md](SECURITY.md) (`GOOGLE_API_KEY`, `POLYGON_API_KEY`, `CORS_ORIGINS`, etc.).
 
-Step-by-step instructions: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).  
-Production scaling (100+ concurrent users): [docs/SCALING.md](docs/SCALING.md).
+Deploy the API with [`render.yaml`](render.yaml); set `VITE_API_BASE` on Vercel to your Render URL. See [SECURITY.md](SECURITY.md) for secrets.
 
 ---
 
@@ -256,8 +255,6 @@ thetalens/
 │   └── src/                 # React UI (phase-based state machine)
 ├── docs/
 │   ├── ARCHITECTURE.md
-│   ├── DEPLOYMENT.md
-│   ├── SCALING.md
 │   └── EVAL.md
 ├── render.yaml              # Render Blueprint
 └── .github/workflows/ci.yml
