@@ -253,7 +253,7 @@ class ThesisAgent:
     ):
         self.polygon = polygon_client
         self.llm_provider = llm_provider
-        self.model = model or "gemma-4-26b-a4b-it"
+        self.model = model or "gemini-2.5-flash"
         self.api_key = api_key
         self.temperature = temperature
 
@@ -546,14 +546,17 @@ async def run_thesis_agent(
     parsed_intent: dict,
     polygon_api_key: str,
     llm_api_key: str | None = None,
-    model: str = "gemma-4-26b-a4b-it",
+    model: str | None = None,
 ) -> dict:
     """Non-streaming convenience wrapper. Returns the full enriched context."""
+    from app.llm_config import get_llm_config
+
+    resolved = model or get_llm_config().resolve_google_model()
     client = PolygonClient(api_key=polygon_api_key)
     agent = ThesisAgent(
         polygon_client=client,
         api_key=llm_api_key,
-        model=model,
+        model=resolved,
     )
 
     events: list[dict] = []

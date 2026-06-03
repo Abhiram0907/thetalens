@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     # Feature flag — overrides llm.yaml `active` (gemini | ollama)
     llm_active: LlmProvider | None = None
     google_api_key: str = ""
+    # Overrides llm.yaml model alias for intent, agent, and chat (e.g. pro, flash, gemma-26b).
+    google_model: str = ""
 
     polygon_api_key: str = ""
     polygon_base_url: str = "https://api.polygon.io"

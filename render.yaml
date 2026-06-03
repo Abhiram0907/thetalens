@@ -32,6 +32,8 @@ services:
         value: "3.12.8"
       - key: LLM_ACTIVE
         value: gemini
+      - key: GOOGLE_MODEL
+        value: flash
       - key: APP_ENV
         value: production
       - key: GOOGLE_API_KEY

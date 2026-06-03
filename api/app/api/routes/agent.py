@@ -51,17 +51,10 @@ def _get_agent(polygon: PolygonClient) -> ThesisAgent:
     if not api_key:
         raise HTTPException(503, "GOOGLE_API_KEY not configured")
 
-    import os
-
-    model = (
-        os.environ.get("AGENT_MODEL")
-        or os.environ.get("GOOGLE_MODEL")
-        or cfg.resolve_model(provider="gemini", alias="gemma-26b")
-    )
     return ThesisAgent(
         polygon_client=polygon,
         llm_provider="google",
-        model=model,
+        model=cfg.resolve_google_model(),
         api_key=api_key,
         temperature=cfg.provider.temperature,
     )

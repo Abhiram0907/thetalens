@@ -52,6 +52,18 @@ class LlmConfig(BaseModel):
         key = name.lower()
         return self.aliases.get(p, {}).get(key, name)
 
+    def resolve_google_model(self, settings: Settings | None = None) -> str:
+        """Resolved Gemini/Gemma model id for agent + LangChain chains."""
+        settings = settings or get_settings()
+        override = (
+            (settings.google_model or "").strip()
+            or os.environ.get("GOOGLE_MODEL", "").strip()
+            or os.environ.get("AGENT_MODEL", "").strip()
+        )
+        if override:
+            return self.resolve_model(provider="gemini", alias=override)
+        return self.resolve_model(provider="gemini")
+
     def gemini_api_key_configured(self) -> bool:
         return bool(
             self.google_api_key
@@ -63,7 +75,7 @@ class LlmConfig(BaseModel):
         cfg = self.provider
         if self.active == "gemini":
             kwargs: dict = {
-                "model": self.resolve_model(),
+                "model": self.resolve_google_model(),
                 "temperature": cfg.temperature,
             }
             if self.google_api_key:
