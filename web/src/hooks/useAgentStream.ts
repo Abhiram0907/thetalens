@@ -39,6 +39,7 @@ export type AgentBuildPayload = {
     vol_input: "realized_30d" | "implied" | "default";
     data_age_warning: string | null;
   };
+  research_report?: Record<string, unknown>;
 };
 
 // ---------------------------------------------------------------------------

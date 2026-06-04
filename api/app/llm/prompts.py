@@ -1,7 +1,4 @@
-from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
-
-from app.schemas.intent import IntentSlots
 
 INTENT_PROMPT = ChatPromptTemplate.from_messages(
     [
@@ -49,7 +46,3 @@ INTENT_PROMPT = ChatPromptTemplate.from_messages(
         ("human", "{query}"),
     ]
 )
-
-
-def create_intent_chain(llm: BaseChatModel):
-    return INTENT_PROMPT | llm.with_structured_output(IntentSlots)

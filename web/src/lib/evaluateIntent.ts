@@ -1,3 +1,5 @@
+/** Types shared with API intent responses (client uses POST /api/intent). */
+
 export type FollowUpField =
   | "underlying"
   | "direction"
@@ -20,17 +22,3 @@ export type IntentEvaluation = {
   questions: FollowUpQuestion[];
   summary: string;
 };
-
-/** Client-side fallback — production flow uses POST /api/intent. */
-export function evaluateIntent(query: string): IntentEvaluation {
-  const q = query.trim();
-
-  return {
-    isClear: true,
-    confidence: q.length < 24 ? 70 : 90,
-    missing: [],
-    questions: [],
-    summary:
-      "Intent retrieved; the agent will infer direction and fill gaps from market data.",
-  };
-}

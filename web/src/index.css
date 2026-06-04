@@ -405,3 +405,31 @@ textarea:focus {
     padding: 14px 12px !important;
   }
 }
+
+.export-report-btn {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--accent);
+  cursor: pointer;
+  transition: background 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+
+.export-report-btn:hover:not(:disabled) {
+  background: var(--accent-dim);
+  border-color: rgba(201, 166, 85, 0.35);
+}
+
+.export-report-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.export-report-btn--muted {
+  color: var(--text-3);
+}

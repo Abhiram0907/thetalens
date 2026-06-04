@@ -24,6 +24,7 @@ import httpx
 from app.core.security import LLM_UNAVAILABLE, redact_secrets, sanitize_tool_result
 from app.services.polygon_client import PolygonClient
 from app.services.strategy_builder import parse_horizon_days
+from app.prompts.research_brief import RESEARCH_BRIEF_INSTRUCTIONS
 from app.tools.registry import derive_magnitude, get_tool, tools_as_openai_schema
 
 logger = logging.getLogger("thetalens.agent")
@@ -68,7 +69,8 @@ class AgentEvent:
 # System prompt
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """\
+SYSTEM_PROMPT = (
+    """\
 You are ThetaLens, an expert options strategist agent. The user provides ONLY:
 underlying, horizon, risk budget, and sometimes direction. They do NOT specify magnitude.
 
@@ -92,22 +94,20 @@ CALCULATE magnitude before recommending structures.
 - NEVER ask the user for direction. If the direction is missing, uncertain, or marked
   "infer", infer it from sentiment, IV regime, earnings/catalyst risk, and expected move.
   If evidence is mixed or mainly volatility/catalyst driven, use Neutral.
-- After all tools, write a FINAL ANALYSIS that includes:
-  a) Vol regime assessment
-  b) Calculated magnitude and how you derived it
-  c) Catalyst risk
-  d) News alignment with thesis
-  e) Recommended structures with reasoning
-  f) Structures to AVOID and why
-  g) Any warnings or caveats
-- Be specific with numbers. Quote the IV rank, expected move, earnings dates.
-- If the user's direction contradicts market data (e.g., bullish thesis but all
-  recent news is bearish), flag it diplomatically.
-- NEVER hallucinate data. Only cite numbers from tool results.
-- This is educational research tooling only. Do NOT present output as financial,
-  investment, or trading advice. Frame recommendations as hypothetical structures
-  for analysis, not instructions to trade.
+- After all tools, write a FINAL ANALYSIS the user can save and export later.
+  Follow the research brief rules below exactly (each section owns one lane;
+  never repeat a fact across sections):
+
 """
+    + RESEARCH_BRIEF_INSTRUCTIONS
+    + """
+- If the user's direction contradicts market data (e.g., bullish thesis but all
+  recent news is bearish), flag it in section 2 or 5 — not in every section.
+- This is educational research tooling only. Do NOT present output as financial,
+  investment, or trading advice. Frame structure recommendations as hypothetical
+  analysis, not instructions to trade.
+"""
+)
 
 INFER_DIRECTION_MARKERS = {
     "",
@@ -430,6 +430,8 @@ class ThesisAgent:
             "direction": direction,
             "horizon": horizon,
             "risk_budget": risk_budget,
+            "query": summary,
+            "summary": summary,
         }
 
         yield AgentEvent(

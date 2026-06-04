@@ -53,7 +53,7 @@ class LlmConfig(BaseModel):
         return self.aliases.get(p, {}).get(key, name)
 
     def resolve_google_model(self, settings: Settings | None = None) -> str:
-        """Resolved Gemini/Gemma model id for agent + LangChain chains."""
+        """Resolved Gemini/Gemma model id for agent (REST) and intent (LangChain)."""
         settings = settings or get_settings()
         override = (
             (settings.google_model or "").strip()
