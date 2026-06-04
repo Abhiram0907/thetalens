@@ -338,13 +338,39 @@ export async function fetchAnalyze(
   };
 }
 
-export async function checkHealth(): Promise<boolean> {
-  try {
-    const res = await fetch(`${API_BASE}/health`);
-    return res.ok;
-  } catch {
-    return false;
+export async function downloadResearchExport(
+  body: unknown,
+  format: "html" | "json" = "html",
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/export`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    let detail: string | undefined;
+    try {
+      const err = (await res.json()) as { detail?: string };
+      if (typeof err.detail === "string") detail = err.detail;
+    } catch {
+      /* ignore */
+    }
+    throw new ApiError(userFacingApiError(res.status, detail), res.status);
   }
+
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = /filename="([^"]+)"/.exec(disposition);
+  const ext = format === "json" ? "json" : "html";
+  const filename = match?.[1] ?? `thetalens-export.${ext}`;
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export type ScannerStock = {

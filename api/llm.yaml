@@ -1,11 +1,15 @@
 # Consolidated LLM config — toggle provider with LLM_ACTIVE in api/.env
 # Restart the API after changes.
+#
+# Default model: flash → gemini-2.5-flash (intent + agent). Override via GOOGLE_MODEL:
+#   GOOGLE_MODEL=pro     → gemini-2.5-pro (best quality, higher cost/latency)
+#   GOOGLE_MODEL=gemma-26b → gemma-4-26b-a4b-it (previous default)
 
 active: gemini
 
 providers:
   gemini:
-    model: gemma-26b
+    model: flash
     temperature: 0.3
   ollama:
     base_url: http://127.0.0.1:11434
@@ -20,8 +24,10 @@ aliases:
     gemma4-31b: gemma-4-31b-it
     gemma: gemma-4-26b-a4b-it
     flash: gemini-2.5-flash
+    gemini-2.5-flash: gemini-2.5-flash
     flash-lite: gemini-2.0-flash-lite
     pro: gemini-2.5-pro
+    gemini-2.5-pro: gemini-2.5-pro
     pro-preview: gemini-2.5-pro-preview-05-06
   ollama:
     llama: llama3.2

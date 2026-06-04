@@ -51,17 +51,10 @@ def _get_agent(polygon: PolygonClient) -> ThesisAgent:
     if not api_key:
         raise HTTPException(503, "GOOGLE_API_KEY not configured")
 
-    import os
-
-    model = (
-        os.environ.get("AGENT_MODEL")
-        or os.environ.get("GOOGLE_MODEL")
-        or cfg.resolve_model(provider="gemini", alias="gemma-26b")
-    )
     return ThesisAgent(
         polygon_client=polygon,
         llm_provider="google",
-        model=model,
+        model=cfg.resolve_google_model(),
         api_key=api_key,
         temperature=cfg.provider.temperature,
     )
@@ -201,6 +194,7 @@ async def _build_strategies(enriched_context: dict) -> dict:
     )
     from app.services.market_data import estimate_iv_rank
     from app.services.reasoning import build_agent_research_reasoning_steps
+    from app.services.research_report_build import build_research_report_enriched
     from app.services.strategy_builder import build_strategies_resilient, parse_horizon_days
 
     ticker = enriched_context.get("ticker", "SPY").upper()
@@ -303,6 +297,16 @@ async def _build_strategies(enriched_context: dict) -> dict:
             *steps,
         ]
 
+    report = await build_research_report_enriched(
+        parsed_view=view,
+        strategies=strategies,
+        reasoning_steps=steps,
+        underlying_price=view.underlying_price,
+        data_provenance=data_provenance,
+        query=enriched_context.get("summary") or enriched_context.get("query"),
+        enriched_context=enriched_context,
+    )
+
     return {
         "strategies": [s.model_dump() for s in strategies],
         "parsed_view": view.model_dump(),
@@ -310,4 +314,5 @@ async def _build_strategies(enriched_context: dict) -> dict:
         "underlying_price": view.underlying_price,
         "data_provenance": data_provenance.model_dump(),
         "disclaimer": DISCLAIMER_STANDARD,
+        "research_report": report.model_dump(mode="json"),
     }

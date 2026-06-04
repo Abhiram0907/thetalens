@@ -154,3 +154,9 @@ class AnalyzeResponse(BaseModel):
     underlying_price: float
     data_provenance: DataProvenance
     disclaimer: str = Field(default=DISCLAIMER_STANDARD)
+    research_report: "ResearchReport | None" = None
+
+
+from app.schemas.research_report import ResearchReport  # noqa: E402
+
+AnalyzeResponse.model_rebuild()

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Body, HTTPException, Request
 
 from app.config import get_settings
 from app.core.security import LLM_UNAVAILABLE
+from app.llm import raise_if_llm_unavailable
 from app.llm_config import get_llm_config
 from app.middleware.rate_limit import limiter
 from app.middleware.rate_limits import ANALYZE, INTENT
@@ -22,6 +23,7 @@ async def parse_intent(
 ) -> IntentResponse:
     cfg = get_llm_config()
     settings = get_settings()
+    raise_if_llm_unavailable(cfg, settings)
     try:
         return await evaluate_intent(body.query)
     except Exception as exc:

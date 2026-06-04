@@ -25,6 +25,11 @@ web/tsconfig.tsbuildinfo
 credentials.json
 .secrets/
 
+# Local-only docs (not published to repo)
+docs/DEPLOYMENT.md
+docs/PROJECT_CONTEXT.md
+docs/SCALING.md
+
 # OS / IDE
 .DS_Store
 .cursor/

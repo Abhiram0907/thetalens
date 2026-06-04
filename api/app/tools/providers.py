@@ -131,6 +131,13 @@ class FinnhubClient:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(_executor, _fetch)
 
+    async def recommendation_trends(self, ticker: str) -> list[dict]:
+        def _fetch():
+            return self._client.recommendation_trends(ticker)
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(_executor, _fetch)
+
 
 # ---------------------------------------------------------------------------
 # Singleton accessors

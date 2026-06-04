@@ -13,6 +13,16 @@ def _step(node: str, message: str, delay: int) -> ReasoningStep:
     return ReasoningStep(node=node, message=message, delay=delay)
 
 
+def _sentiment_aligns(news: dict, view: ParsedView) -> bool:
+    sent = str(news.get("overall_sentiment", "")).lower()
+    direction = view.direction.lower()
+    if direction == "bullish":
+        return sent in ("bullish", "positive")
+    if direction == "bearish":
+        return sent in ("bearish", "negative")
+    return True
+
+
 def _captured_summary(captured: CapturedIntent) -> str:
     parts: list[str] = []
     if captured.underlying:
@@ -270,14 +280,32 @@ def build_agent_research_reasoning_steps(
 
     news = enriched.get("get_news_sentiment") or {}
     if news.get("overall_sentiment"):
+        score = news.get("sentiment_score")
+        score_bit = f" (score {score})" if score is not None else ""
         steps.append(
             _step(
                 "Research Agent",
                 (
-                    f"News sentiment: {news.get('overall_sentiment')} "
-                    f"({news.get('headline_count', 0)} headlines)"
+                    f"News sentiment: {news.get('overall_sentiment')}{score_bit} "
+                    f"across {news.get('headline_count', 0)} headlines — "
+                    f"{'aligns with' if _sentiment_aligns(news, view) else 'check vs'} "
+                    f"{view.direction.lower()} bias"
                 ),
                 2100,
+            ),
+        )
+
+    hist = enriched.get("get_historical_post_earnings_move") or {}
+    if hist and not hist.get("error") and hist.get("average_move_pct") is not None:
+        steps.append(
+            _step(
+                "Research Agent",
+                (
+                    f"Post-earnings history: avg ±{hist.get('average_move_pct')}% move "
+                    f"({hist.get('quarters_analyzed', '?')} quarters, "
+                    f"max {hist.get('max_move_pct', '?')}%)"
+                ),
+                2250,
             ),
         )
 
@@ -338,8 +366,25 @@ def build_agent_research_reasoning_steps(
 
     analysis = enriched.get("agent_analysis")
     if analysis:
-        snippet = analysis.strip().split("\n")[0][:120]
-        steps.append(_step("Research Agent", snippet, 5100))
+        delay_analysis = 5100
+        for para in [p.strip() for p in analysis.split("\n\n") if p.strip()][:4]:
+            msg = para if len(para) <= 220 else para[:217] + "…"
+            steps.append(_step("Research Agent", msg, delay_analysis))
+            delay_analysis += 550
+
+    if len(strategies) >= 2:
+        alt = strategies[1]
+        steps.append(
+            _step(
+                "Synthesizer",
+                (
+                    f"Alternative #{alt.rank}: {alt.name} — "
+                    f"EV ${alt.metrics.ev:.0f}, PoP {alt.metrics.pop}% "
+                    f"({alt.vs_next or 'see card for tradeoffs'})"
+                ),
+                5400,
+            ),
+        )
 
     pipeline = build_analysis_reasoning_steps(
         view, snapshot, strategies, target_dte=target_dte

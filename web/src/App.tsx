@@ -14,12 +14,20 @@ import { StrategyCard } from "./components/StrategyCard";
 import { ViewSidebar } from "./components/ViewSidebar";
 import {
   ApiError,
+  downloadResearchExport,
   fetchAnalyze,
   fetchIntent,
   mapAgentBuildPayload,
   type CapturedIntent,
   type ScannerStock,
 } from "./api/client";
+import { buildExportRequestBody } from "./lib/exportPayload";
+import {
+  clearAnalysisSession,
+  loadAnalysisSession,
+  restoreUiState,
+  saveAnalysisSession,
+} from "./lib/analysisSession";
 import { ScannerView } from "./components/ScannerView";
 import type { AgentBuildPayload } from "./hooks/useAgentStream";
 import { DEMO_QUERY, VAGUE_DEMO_QUERY, SCANNER_DEMO_QUERY } from "./data/mockData";
@@ -32,20 +40,45 @@ const PARSE_DELAY_MS = 700;
 
 type Phase = "input" | "checking" | "researching" | "analyzing" | "complete" | "scanning";
 
+const restoredSession = loadAnalysisSession();
+const restoredUi = restoredSession ? restoreUiState(restoredSession) : null;
+
 export default function App() {
-  const [phase, setPhase] = useState<Phase>("input");
-  const [query, setQuery] = useState("");
+  const [phase, setPhase] = useState<Phase>(() => restoredUi?.phase ?? "input");
+  const [query, setQuery] = useState(() => restoredUi?.query ?? "");
   const [capturedIntent, setCapturedIntent] = useState<CapturedIntent | null>(
-    null,
+    () => restoredUi?.capturedIntent ?? null,
   );
-  const [visibleSteps, setVisibleSteps] = useState(0);
-  const [visibleCards, setVisibleCards] = useState(0);
-  const [expandedCard, setExpandedCard] = useState<number | null>(null);
-  const [reasoningSteps, setReasoningSteps] = useState<ReasoningStep[]>([]);
-  const [parsedView, setParsedView] = useState<ParsedView | null>(null);
-  const [dataProvenance, setDataProvenance] = useState<DataProvenance | null>(null);
-  const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [visibleSteps, setVisibleSteps] = useState(
+    () => restoredUi?.visibleSteps ?? 0,
+  );
+  const [visibleCards, setVisibleCards] = useState(
+    () => restoredUi?.visibleCards ?? 0,
+  );
+  const [expandedCard, setExpandedCard] = useState<number | null>(
+    () => restoredUi?.expandedCard ?? null,
+  );
+  const [reasoningSteps, setReasoningSteps] = useState<ReasoningStep[]>(
+    () => restoredUi?.reasoningSteps ?? [],
+  );
+  const [parsedView, setParsedView] = useState<ParsedView | null>(
+    () => restoredUi?.parsedView ?? null,
+  );
+  const [dataProvenance, setDataProvenance] = useState<DataProvenance | null>(
+    () => restoredUi?.dataProvenance ?? null,
+  );
+  const [strategies, setStrategies] = useState<Strategy[]>(
+    () => restoredUi?.strategies ?? [],
+  );
   const [error, setError] = useState<string | null>(null);
+  const [researchReport, setResearchReport] = useState<Record<string, unknown> | null>(
+    () => restoredUi?.researchReport ?? null,
+  );
+  const [agentEnrichedContext, setAgentEnrichedContext] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+  const [exporting, setExporting] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -97,6 +130,7 @@ export default function App() {
   const runAnalysis = useCallback(
     async (resolvedQuery: string, intent?: CapturedIntent | null) => {
       setQuery(resolvedQuery);
+      clearAnalysisSession();
       setPhase("analyzing");
       setVisibleCards(0);
       setExpandedCard(null);
@@ -110,6 +144,7 @@ export default function App() {
         setDataProvenance(result.dataProvenance);
         setStrategies(enriched);
         setReasoningSteps(result.reasoningSteps);
+        setResearchReport(null);
         revealStrategies(enriched, result.reasoningSteps);
       } catch (err) {
         const message =
@@ -127,6 +162,7 @@ export default function App() {
       if (!q) return;
 
       clearTimers();
+      clearAnalysisSession();
       setPhase("checking");
       setVisibleSteps(0);
       setVisibleCards(0);
@@ -139,6 +175,7 @@ export default function App() {
       try {
         const evaluation = await fetchIntent(q);
 
+        setQuery(q);
         setCapturedIntent(evaluation.captured);
         if (evaluation.captured.mode === "scanner") {
           setPhase("scanning");
@@ -156,7 +193,8 @@ export default function App() {
   );
 
   const handleAgentComplete = useCallback(
-    async (_context: Record<string, unknown>, buildPayload: AgentBuildPayload | null) => {
+    async (context: Record<string, unknown>, buildPayload: AgentBuildPayload | null) => {
+      setAgentEnrichedContext(context);
       setPhase("analyzing");
       setVisibleCards(0);
       setExpandedCard(null);
@@ -183,6 +221,7 @@ export default function App() {
           setDataProvenance(result.dataProvenance);
           setStrategies(enriched);
           setReasoningSteps(result.reasoningSteps);
+          setResearchReport(buildPayload.research_report ?? null);
           revealStrategies(enriched, result.reasoningSteps);
           return;
         } catch {
@@ -239,6 +278,66 @@ export default function App() {
 
   useEffect(() => () => clearTimers(), [clearTimers]);
 
+  useEffect(() => {
+    const hasResults =
+      parsedView &&
+      dataProvenance &&
+      strategies.length > 0 &&
+      (phase === "complete" || phase === "analyzing");
+
+    if (hasResults) {
+      saveAnalysisSession({
+        phase: "complete",
+        query,
+        capturedIntent,
+        reasoningSteps,
+        parsedView,
+        dataProvenance,
+        strategies,
+        researchReport,
+        expandedCard,
+      });
+      return;
+    }
+    if (phase === "scanning" && capturedIntent?.underlying) {
+      saveAnalysisSession({
+        phase: "scanning",
+        query,
+        capturedIntent,
+        reasoningSteps: [],
+        parsedView: null,
+        dataProvenance: null,
+        strategies: [],
+        researchReport: null,
+        expandedCard: null,
+      });
+      return;
+    }
+    if (phase === "researching" && query.trim()) {
+      saveAnalysisSession({
+        phase: "researching",
+        query,
+        capturedIntent,
+        reasoningSteps: [],
+        parsedView: null,
+        dataProvenance: null,
+        strategies: [],
+        researchReport: null,
+        expandedCard: null,
+      });
+    }
+  }, [
+    phase,
+    query,
+    capturedIntent,
+    reasoningSteps,
+    parsedView,
+    dataProvenance,
+    strategies,
+    researchReport,
+    expandedCard,
+  ]);
+
   const useExample = (text: string) => {
     setQuery(text);
     setTimeout(() => inputRef.current?.focus(), 50);
@@ -254,6 +353,7 @@ export default function App() {
 
   const resetToInput = () => {
     clearTimers();
+    clearAnalysisSession();
     setPhase("input");
     setQuery("");
     setVisibleSteps(0);
@@ -264,7 +364,38 @@ export default function App() {
     setParsedView(null);
     setDataProvenance(null);
     setStrategies([]);
+    setResearchReport(null);
+    setAgentEnrichedContext(null);
     setError(null);
+  };
+
+  const handleExportReport = async () => {
+    if (!parsedView || !dataProvenance || strategies.length === 0) return;
+    setExporting(true);
+    setError(null);
+    try {
+      const body = buildExportRequestBody(
+        {
+          query,
+          captured: capturedIntent,
+          parsedView,
+          reasoningSteps,
+          strategies,
+          underlyingPrice: parsedView.underlyingPrice,
+          dataProvenance,
+          researchReport,
+          enrichedContext: agentEnrichedContext ?? undefined,
+        },
+        "html",
+      );
+      await downloadResearchExport(body, "html");
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : userFacingNetworkError();
+      setError(message);
+    } finally {
+      setExporting(false);
+    }
   };
 
   if (isInputFlow) {
@@ -569,6 +700,7 @@ export default function App() {
             onComplete={handleAgentComplete}
             onBack={resetToInput}
             accentColor={ACCENT_COLOR}
+            autoStart
           />
         </div>
       </div>
@@ -820,10 +952,29 @@ export default function App() {
                       Ranked Structures
                     </div>
                     <div
-                      style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        marginTop: 4,
+                      }}
                     >
-                      {visibleCards} of {strategies.length} · sorted by thesis
-                      rank (execution quality on each card)
+                      <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+                        {visibleCards} of {strategies.length} · sorted by thesis
+                        rank (execution quality on each card)
+                      </div>
+                      {phase === "complete" && (
+                        <button
+                          type="button"
+                          className="export-report-btn"
+                          disabled={exporting}
+                          onClick={() => void handleExportReport()}
+                        >
+                          {exporting ? "Exporting…" : "Export"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

@@ -1,6 +1,6 @@
 import re
 
-from app.core.dependencies import get_intent_chain
+from app.llm import parse_intent_slots
 from app.services.field_parser import parse_magnitude_text, parse_risk_budget_text
 from app.services.strategy_builder import parse_horizon_days
 from app.schemas.intent import IntentSlots
@@ -63,8 +63,7 @@ async def extract_intent_slots(query: str) -> IntentSlots:
     """Single LLM intent extraction (with regex fallback)."""
     q = query.strip()
     try:
-        chain = get_intent_chain()
-        return await chain.ainvoke({"query": q})
+        return await parse_intent_slots(q)
     except Exception:
         return _fallback_slots(q)
 

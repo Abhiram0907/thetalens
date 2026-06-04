@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { API_BASE } from "../../lib/apiBase";
 import { useAgentStream, type AgentBuildPayload } from "../../hooks/useAgentStream";
 import { ReasoningTrace } from "./ReasoningTrace";
@@ -23,6 +23,8 @@ interface AgentViewProps {
   onBack?: () => void;
   apiBase?: string;
   accentColor?: string;
+  /** Start the agent stream as soon as intent is ready (default on). */
+  autoStart?: boolean;
 }
 
 function normalizeDirection(direction?: string): string {
@@ -35,6 +37,7 @@ export function AgentView({
   onBack,
   apiBase = API_BASE,
   accentColor = "var(--accent)",
+  autoStart = true,
 }: AgentViewProps) {
   const agent = useAgentStream(apiBase);
   const [hasStarted, setHasStarted] = useState(false);
@@ -53,6 +56,11 @@ export function AgentView({
 
     agent.start(request);
   }, [parsedIntent, agent]);
+
+  useEffect(() => {
+    if (!autoStart || hasStarted || !parsedIntent?.query) return;
+    handleStart();
+  }, [autoStart, hasStarted, parsedIntent?.query, handleStart]);
 
   const handleProceed = useCallback(() => {
     if (agent.context && onComplete) {
@@ -188,7 +196,7 @@ export function AgentView({
         </div>
 
         <div className="agent-sidebar-actions">
-          {!hasStarted && (
+          {!hasStarted && !autoStart && (
             <button
               type="button"
               className="agent-btn agent-btn--primary"
@@ -232,22 +240,34 @@ export function AgentView({
       <div className="agent-view__main">
         {!hasStarted ? (
           <div className="agent-empty-state">
-            <div className="agent-empty-icon">θ</div>
-            <h2>Trade Thesis Agent</h2>
-            <p>
-              ThetaLens researches your thesis before suggesting structures — IV rank,
-              earnings catalysts, news sentiment, and expected move — then calculates
-              magnitude from market data and filters structures to fit the vol regime.
-            </p>
-            <FinancialDisclaimer variant="banner" />
-            <button
-              type="button"
-              className="agent-btn agent-btn--primary agent-btn--lg"
-              onClick={handleStart}
-              style={{ background: accentColor }}
-            >
-              Start Research
-            </button>
+            {autoStart ? (
+              <>
+                <div className="agent-empty-icon">θ</div>
+                <h2>Starting research…</h2>
+                <p>
+                  Running IV, earnings, sentiment, and expected-move tools for your thesis.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="agent-empty-icon">θ</div>
+                <h2>Trade Thesis Agent</h2>
+                <p>
+                  ThetaLens researches your thesis before suggesting structures — IV rank,
+                  earnings catalysts, news sentiment, and expected move — then calculates
+                  magnitude from market data and filters structures to fit the vol regime.
+                </p>
+                <FinancialDisclaimer variant="banner" />
+                <button
+                  type="button"
+                  className="agent-btn agent-btn--primary agent-btn--lg"
+                  onClick={handleStart}
+                  style={{ background: accentColor }}
+                >
+                  Start Research
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <ReasoningTrace

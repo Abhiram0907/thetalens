@@ -14,6 +14,7 @@ from app.services.market_data import (
     load_snapshot_cached,
 )
 from app.services.reasoning import build_analysis_reasoning_steps
+from app.services.research_report_build import build_research_report_enriched
 from app.services.strategy_builder import build_strategies_resilient, parse_horizon_days
 from app.services.view_parser import parse_view
 
@@ -75,10 +76,21 @@ async def run_analysis(
         view, snapshot, strategies, target_dte=target_dte
     )
 
+    report = await build_research_report_enriched(
+        parsed_view=view,
+        strategies=strategies,
+        reasoning_steps=steps,
+        underlying_price=view.underlying_price,
+        data_provenance=data_provenance,
+        query=query,
+        captured=captured,
+    )
+
     return AnalyzeResponse(
         parsed_view=view,
         reasoning_steps=steps,
         strategies=strategies,
         underlying_price=view.underlying_price,
         data_provenance=data_provenance,
+        research_report=report,
     )
