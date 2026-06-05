@@ -8,6 +8,20 @@ from app.schemas.market_intel import MarketIntel
 from app.schemas.research_brief import ResearchBrief
 from app.schemas.research_report import ResearchReport
 
+_STRUCTURE_CUTOFF = re.compile(
+    r"\n\s*(?:\*{1,3}\s*)*(?:\*\*)?\s*"
+    r"(?:Hypothetical|STRUCTURE\s+NOTES|Option\s+structure|"
+    r"Recommended\s+Structures|Structures\s+to\s+Avoid|assess_structure_fit)",
+    re.I,
+)
+
+_OPTIONS_JARGON = re.compile(
+    r"\b(bull call spread|bear call|call diagonal|put diagonal|iron condor|"
+    r"short premium|undefined.?risk|IV rank|implied vol|vol regime|theta|vega|"
+    r"hypothetical structure)\b",
+    re.I,
+)
+
 _SECTION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("stock_doing", re.compile(r"1\.\s*WHAT'?S THE STOCK DOING\??", re.I)),
     ("mood", re.compile(r"2\.\s*WHAT'?S THE MOOD\??", re.I)),
@@ -58,9 +72,77 @@ def _parse_numbered_sections(text: str, patterns: list[tuple[str, re.Pattern[str
     return sections
 
 
+def sanitize_agent_brief_text(text: str) -> str:
+    """Drop option-structure appendices the agent must not put in the export brief."""
+    text = (text or "").strip()
+    if not text:
+        return ""
+    cut = _STRUCTURE_CUTOFF.search(text)
+    if cut:
+        text = text[: cut.start()].strip()
+    return text
+
+
+def _truncate_sentences(text: str, max_sentences: int = 2) -> str:
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    kept = [p.strip() for p in parts if p.strip()][:max_sentences]
+    return " ".join(kept)
+
+
+def _bottom_line_from_context(report: ResearchReport, intel: MarketIntel | None) -> str:
+    view = report.parsed_view
+    sym = view.underlying.upper()
+    direction = (view.direction or "Neutral").lower()
+    horizon = view.horizon_label or view.horizon
+
+    business = ""
+    sector_ctx = ""
+    if intel and intel.sector:
+        s = intel.sector
+        if s.business_blurb:
+            business = s.business_blurb
+        elif s.industry:
+            business = f"{sym} is in {s.industry}"
+            if s.sector_name:
+                business += f" ({s.sector_name})"
+        if s.sector_name:
+            sector_ctx = f"{s.sector_name} sector"
+
+    if report.sentiment_headlines:
+        tone = report.sentiment_headlines[0].tone or "mixed"
+        sector_ctx = f"{sector_ctx} — headline tone {tone}".strip(" —")
+
+    line1_bits = [b for b in [business, sector_ctx] if b]
+    line1 = ". ".join(line1_bits) if line1_bits else f"{sym} is the focus for this thesis."
+    if not line1.endswith("."):
+        line1 += "."
+
+    verdict = {
+        "bullish": "supported",
+        "bearish": "challenged",
+        "neutral": "mixed",
+    }.get(direction, "mixed")
+    line2 = (
+        f"A {direction} view over {horizon} looks {verdict} "
+        f"based on tape and headlines — verify before acting."
+    )
+    return f"{line1} {line2}"
+
+
+def _clean_bottom_line(
+    line: str,
+    report: ResearchReport,
+    intel: MarketIntel | None,
+) -> str:
+    line = (line or "").strip()
+    if not line or _OPTIONS_JARGON.search(line) or "hypothetical" in line.lower():
+        return _bottom_line_from_context(report, intel)
+    return _truncate_sentences(line, 2)
+
+
 def parse_research_brief(text: str) -> ResearchBrief:
     """Parse agent final analysis into structured brief sections."""
-    text = (text or "").strip()
+    text = sanitize_agent_brief_text(text)
     if not text:
         return ResearchBrief()
 
@@ -89,11 +171,19 @@ def fallback_research_brief(
     sym = view.underlying.upper()
     stock = f"{sym} is at ${view.underlying_price:.2f}."
     if intel and intel.sector:
-        stock += f" {intel.sector.narrative or ''}".strip()
+        s = intel.sector
+        if s.business_blurb:
+            stock = f"{s.business_blurb} {stock}"
+        elif s.industry:
+            stock = f"{sym} ({s.industry}) {stock}"
+        if s.narrative:
+            stock += f" {s.narrative}"
     mood = "Recent headline coverage is limited."
     if report.sentiment_headlines:
         h = report.sentiment_headlines[0]
         mood = f'Headlines lean {h.tone or "mixed"}; top story: "{h.title}".'
+    if intel and intel.sector and intel.sector.sector_name:
+        mood += f" Sector context: {intel.sector.sector_name}."
     move = "Check the calendar for earnings and other scheduled events in your window."
     if intel and intel.catalysts:
         c = intel.catalysts[0]
@@ -106,10 +196,7 @@ def fallback_research_brief(
         headwinds = [m for m in intel.macro if m.thesis_impact == "headwind"]
         if headwinds:
             cons.append(f"{headwinds[0].name} is a headwind: {headwinds[0].note}")
-    bottom = (
-        f"Your {view.direction.lower()} view on {sym} depends on whether recent tape "
-        "and headlines keep cooperating through your horizon."
-    )
+    bottom = _bottom_line_from_context(report, intel)
     return ResearchBrief(
         stock_doing=stock,
         mood=mood,
@@ -128,7 +215,9 @@ def research_brief_from_agent_text(
     """Prefer parsed agent analysis; fall back to deterministic brief."""
     parsed = parse_research_brief(agent_text)
     if parsed.stock_doing or parsed.mood:
-        if not parsed.bottom_line and parsed.working_against:
-            parsed = parsed.model_copy(update={"bottom_line": parsed.working_against[-1]})
+        bottom = _clean_bottom_line(parsed.bottom_line, report, intel)
+        if not bottom and parsed.working_against:
+            bottom = _clean_bottom_line(parsed.working_against[-1], report, intel)
+        parsed = parsed.model_copy(update={"bottom_line": bottom})
         return parsed
     return fallback_research_brief(report, intel)

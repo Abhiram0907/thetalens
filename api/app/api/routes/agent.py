@@ -9,11 +9,17 @@ from pydantic import BaseModel, Field
 from app.agents.thesis_agent import AgentEvent, EventType, ThesisAgent
 from app.config import get_settings
 from app.core.disclaimer import DISCLAIMER_STANDARD
-from app.core.security import LLM_UNAVAILABLE, UPSTREAM_UNAVAILABLE, safe_client_message
+from app.core.security import (
+    INTENT_UNRECOGNIZED,
+    LLM_UNAVAILABLE,
+    UPSTREAM_UNAVAILABLE,
+    safe_client_message,
+)
 from app.llm_config import get_llm_config
 from app.middleware.rate_limit import limiter
 from app.middleware.rate_limits import AGENT_RUN, AGENT_STREAM
 from app.services.market_data import MarketDataError, load_snapshot_cached
+from app.services.ticker_resolver import resolve_underlying_ai
 from app.services.polygon_client import PolygonClient, get_polygon_client
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
@@ -60,42 +66,24 @@ def _get_agent(polygon: PolygonClient) -> ThesisAgent:
     )
 
 
-def _build_intent(req: ThesisRequest) -> dict:
+async def _resolve_request_ticker(req: ThesisRequest) -> str:
+    if req.underlying:
+        return req.underlying.upper()
+    resolved = await resolve_underlying_ai(req.query)
+    if not resolved:
+        raise HTTPException(status_code=422, detail=INTENT_UNRECOGNIZED)
+    return resolved
+
+
+async def _build_intent(req: ThesisRequest) -> dict:
     return {
         "query": req.query,
-        "underlying": req.underlying or _extract_ticker(req.query),
+        "underlying": await _resolve_request_ticker(req),
         "direction": req.direction or "infer",
         "horizon": req.horizon or "30 days",
         "risk_budget": req.risk_budget or "not specified",
         "summary": req.summary or req.query,
     }
-
-
-_NOISE_WORDS = {
-    "I", "A", "AN", "THE", "AND", "OR", "FOR", "NOT", "TO", "IN", "ON",
-    "IS", "IT", "MY", "OF", "AT", "IF", "DO", "SO", "UP", "BY", "AM",
-    "BE", "NO", "AS", "BUT", "ALL", "MAX", "LOW", "HIGH", "OVER", "NEXT",
-    "LIKE", "MOVE", "FIND", "WANT", "LOOK", "WEEK", "RISK", "SELL",
-    "WITH", "THAT", "THIS", "WHAT", "WHEN", "WILL", "THAN", "FROM",
-    "DOWN", "LONG", "TERM",
-}
-
-
-def _extract_ticker(query: str) -> str:
-    import re
-    dollar_m = re.search(r"\$([A-Z]{1,5})\b", query)
-    if dollar_m:
-        return dollar_m.group(1)
-    for m in re.finditer(r"\b([A-Z]{1,5})\b", query):
-        sym = m.group(1)
-        if sym not in _NOISE_WORDS and len(sym) >= 2:
-            return sym
-    words = query.upper().split()
-    for word in words:
-        clean = word.strip(".,!?;:")
-        if 2 <= len(clean) <= 5 and clean.isalpha() and clean not in _NOISE_WORDS:
-            return clean
-    return "SPY"
 
 
 @router.post("/stream")
@@ -106,7 +94,7 @@ async def stream_thesis(
 ):
     polygon = _get_polygon_client()
     agent = _get_agent(polygon)
-    intent = _build_intent(req)
+    intent = await _build_intent(req)
     settings = get_settings()
 
     async def event_stream() -> AsyncIterator[str]:
@@ -167,7 +155,7 @@ async def run_thesis(
 
     polygon = _get_polygon_client()
     agent = _get_agent(polygon)
-    intent = _build_intent(req)
+    intent = await _build_intent(req)
 
     events: list[dict] = []
     enriched: dict = {}
@@ -197,7 +185,9 @@ async def _build_strategies(enriched_context: dict) -> dict:
     from app.services.research_report_build import build_research_report_enriched
     from app.services.strategy_builder import build_strategies_resilient, parse_horizon_days
 
-    ticker = enriched_context.get("ticker", "SPY").upper()
+    ticker = str(enriched_context.get("ticker") or "").upper()
+    if not ticker:
+        raise HTTPException(status_code=422, detail=INTENT_UNRECOGNIZED)
     direction_raw = str(enriched_context.get("direction", "neutral")).lower()
     direction_map = {
         "bullish": ("Bullish", "↑"),

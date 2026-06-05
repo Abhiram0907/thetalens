@@ -95,17 +95,3 @@ def build_vol_view_fields(
         "volatility_view": regime,
     }
 
-
-def merge_parsed_view_vol(
-    view: ParsedView,
-    iv_data: dict | None,
-    *,
-    fallback_rank: int | None = None,
-    fallback_label: str | None = None,
-) -> ParsedView:
-    fields = build_vol_view_fields(
-        iv_data,
-        fallback_rank=fallback_rank,
-        fallback_label=fallback_label,
-    )
-    return view.model_copy(update=fields)

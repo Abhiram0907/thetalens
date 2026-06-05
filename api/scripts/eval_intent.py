@@ -27,21 +27,21 @@ CASES: list[EvalCase] = [
     EvalCase("What's the best options play on AAPL right now?", "AAPL", None, None, None),
     EvalCase("Play AMD earnings with $750", "AMD", None, None, "$750"),
     EvalCase("SPY range-bound sideways for 3 weeks", "SPY", "Neutral", "3 weeks", None),
-    EvalCase("Microsoft puts, bearish, 1 month", "MSFT", "Bearish", "1 month", None),
+    EvalCase("MSFT puts, bearish, 1 month", "MSFT", "Bearish", "1 month", None),
     EvalCase("$META long calls, 45 days", "META", "Bullish", "45 days", None),
-    EvalCase("Amazon looks weak, short term", "AMZN", "Bearish", None, None),
+    EvalCase("AMZN looks weak, short term", "AMZN", "Bearish", None, None),
     EvalCase("Stocks that move like NBIS", "NBIS", None, None, None),  # mode not in fallback
     EvalCase("Find tickers similar to COIN", "COIN", None, None, None),
     EvalCase("Underlying: HOOD\nDirection: Bullish\nHorizon: 60 days\nRisk budget: $300", "HOOD", "Bullish", "60 days", "$300"),
-    EvalCase("Nvidia going up after earnings, max loss 2k", "NVDA", "Bullish", None, "$2,000"),
+    EvalCase("NVDA going up after earnings, max loss 2k", "NVDA", "Bullish", None, "$2,000"),
     EvalCase("Neutral iron condor on QQQ, 30 days", "QQQ", "Neutral", "30 days", None),
     EvalCase("I want to sell premium on INTC", "INTC", None, None, None),
-    EvalCase("Tesla crash incoming, buy puts $500 risk", "TSLA", "Bearish", None, "$500"),
-    EvalCase("Best LEAP on Apple 6 months", "AAPL", None, "6 months", None),
+    EvalCase("TSLA crash incoming, buy puts $500 risk", "TSLA", "Bearish", None, "$500"),
+    EvalCase("Best LEAP on AAPL 6 months", "AAPL", None, "6 months", None),
     EvalCase("GOOG bullish 2-3 weeks", "GOOG", "Bullish", "2–3 weeks", None),
     EvalCase("Risk budget: $250 on NVDA calls", "NVDA", "Bullish", None, "$250"),
     EvalCase("What moves similar to MSTR?", "MSTR", None, None, None),
-    EvalCase("Bearish view on Netflix 1 week", None, "Bearish", "1 week", None),  # NFLX not in company map
+    EvalCase("Bearish view on NFLX 1 week", "NFLX", "Bearish", "1 week", None),
 ]
 
 

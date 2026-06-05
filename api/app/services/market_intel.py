@@ -45,6 +45,7 @@ FALLBACK_PEERS: dict[str, list[str]] = {
     "AAPL": ["MSFT", "GOOGL", "META", "AMZN", "AVGO"],
     "TSLA": ["F", "GM", "RIVN", "LCID", "NIO"],
     "MSFT": ["AAPL", "GOOGL", "AMZN", "META", "ORCL"],
+    "CRWV": ["NVDA", "AMD", "SMCI", "DELL", "ORCL"],
 }
 
 MACRO_TICKERS = {
@@ -200,9 +201,24 @@ async def _resolve_peers(ticker: str, info: dict | None = None) -> list[str]:
     return out[:6]
 
 
-async def _build_sector(ticker: str, info: dict) -> SectorPositioning | None:
+def _business_blurb(ticker: str, info: dict) -> tuple[str, str, str]:
     sector = (info.get("sector") or "").strip()
-    etfs = SECTOR_ETF_MAP.get(sector, DEFAULT_SECTOR_ETFS)
+    industry = (info.get("industry") or "").strip()
+    raw = (info.get("longBusinessSummary") or "").strip()
+    if raw:
+        blurb = raw if len(raw) <= 280 else raw[:277].rsplit(" ", 1)[0] + "..."
+    elif industry and sector:
+        blurb = f"{ticker.upper()} operates in {industry} ({sector})."
+    elif industry:
+        blurb = f"{ticker.upper()} operates in {industry}."
+    else:
+        blurb = ""
+    return sector, industry, blurb
+
+
+async def _build_sector(ticker: str, info: dict) -> SectorPositioning | None:
+    sector_name, industry, business_blurb = _business_blurb(ticker, info)
+    etfs = SECTOR_ETF_MAP.get(sector_name, DEFAULT_SECTOR_ETFS)
     symbols = [ticker.upper(), BENCHMARK, *etfs]
     returns = await asyncio.gather(*[_ytd_return_pct(s) for s in symbols])
     by_sym = dict(zip(symbols, returns, strict=True))
@@ -218,7 +234,6 @@ async def _build_sector(ticker: str, info: dict) -> SectorPositioning | None:
             bars.append(YtdReturnBar(symbol=etf, label=etf, return_pct=r))
 
     best = max(bars, key=lambda b: b.return_pct) if bars else None
-    rel = ticker_ret - bench_ret
     if best and best.return_pct > bench_ret + 3:
         regime = "leading"
         lead = f"{best.label} +{best.return_pct:.1f}% YTD vs {BENCHMARK} +{bench_ret:.1f}% — sector tide is strong"
@@ -239,6 +254,9 @@ async def _build_sector(ticker: str, info: dict) -> SectorPositioning | None:
         benchmark_label="SPX (SPY)",
         sector_etfs=bars,
         narrative=narrative,
+        sector_name=sector_name,
+        industry=industry,
+        business_blurb=business_blurb,
     )
 
 

@@ -21,7 +21,8 @@ from typing import Any, AsyncIterator
 
 import httpx
 
-from app.core.security import LLM_UNAVAILABLE, redact_secrets, sanitize_tool_result
+from app.core.security import INTENT_UNRECOGNIZED, LLM_UNAVAILABLE, redact_secrets, sanitize_tool_result
+from app.services.company_profile import fetch_company_profile
 from app.services.polygon_client import PolygonClient
 from app.services.strategy_builder import parse_horizon_days
 from app.prompts.research_brief import RESEARCH_BRIEF_INSTRUCTIONS
@@ -95,8 +96,9 @@ CALCULATE magnitude before recommending structures.
   "infer", infer it from sentiment, IV regime, earnings/catalyst risk, and expected move.
   If evidence is mixed or mainly volatility/catalyst driven, use Neutral.
 - After all tools, write a FINAL ANALYSIS the user can save and export later.
-  Follow the research brief rules below exactly (each section owns one lane;
-  never repeat a fact across sections):
+  It must be ONLY sections 1-6 from the research brief below — stop after
+  BOTTOM LINE. Do not append option structures, spreads, or assess_structure_fit
+  recommendations; those are handled elsewhere in the app.
 
 """
     + RESEARCH_BRIEF_INSTRUCTIONS
@@ -104,8 +106,7 @@ CALCULATE magnitude before recommending structures.
 - If the user's direction contradicts market data (e.g., bullish thesis but all
   recent news is bearish), flag it in section 2 or 5 — not in every section.
 - This is educational research tooling only. Do NOT present output as financial,
-  investment, or trading advice. Frame structure recommendations as hypothetical
-  analysis, not instructions to trade.
+  investment, or trading advice.
 """
 )
 
@@ -397,7 +398,13 @@ class ThesisAgent:
 
     async def run(self, parsed_intent: dict) -> AsyncIterator[AgentEvent]:
         """Run the agent loop. Yields AgentEvent objects for SSE streaming."""
-        ticker = parsed_intent.get("underlying", "SPY")
+        ticker = parsed_intent.get("underlying") or ""
+        if not ticker:
+            yield AgentEvent(
+                type=EventType.ERROR,
+                data={"message": INTENT_UNRECOGNIZED},
+            )
+            return
         direction = parsed_intent.get("direction") or "infer"
         horizon = parsed_intent.get("horizon", "30 days")
         risk_budget = parsed_intent.get("risk_budget", "not specified")
@@ -425,6 +432,7 @@ class ThesisAgent:
         ]
 
         tools = tools_as_openai_schema()
+        profile = await fetch_company_profile(ticker)
         enriched_context: dict[str, Any] = {
             "ticker": ticker,
             "direction": direction,
@@ -432,6 +440,7 @@ class ThesisAgent:
             "risk_budget": risk_budget,
             "query": summary,
             "summary": summary,
+            "company_profile": profile.model_dump(),
         }
 
         yield AgentEvent(
@@ -529,7 +538,9 @@ class ThesisAgent:
             enriched_context["magnitude"] = mag["magnitude"]
             return
 
-        ticker = enriched_context.get("ticker", "SPY")
+        ticker = enriched_context.get("ticker")
+        if not ticker:
+            return
         horizon = enriched_context.get("horizon", "30 days")
         try:
             result = await derive_magnitude(
@@ -543,30 +554,3 @@ class ThesisAgent:
         except Exception:
             enriched_context["magnitude"] = "±5% range"
 
-
-async def run_thesis_agent(
-    parsed_intent: dict,
-    polygon_api_key: str,
-    llm_api_key: str | None = None,
-    model: str | None = None,
-) -> dict:
-    """Non-streaming convenience wrapper. Returns the full enriched context."""
-    from app.llm_config import get_llm_config
-
-    resolved = model or get_llm_config().resolve_google_model()
-    client = PolygonClient(api_key=polygon_api_key)
-    agent = ThesisAgent(
-        polygon_client=client,
-        api_key=llm_api_key,
-        model=resolved,
-    )
-
-    events: list[dict] = []
-    enriched: dict[str, Any] = {}
-    async for event in agent.run(parsed_intent):
-        events.append({"type": event.type.value, "data": event.data})
-        if event.type == EventType.CONTEXT:
-            enriched = event.data
-
-    enriched["_events"] = events
-    return enriched

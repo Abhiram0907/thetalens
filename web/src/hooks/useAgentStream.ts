@@ -46,7 +46,7 @@ export type AgentBuildPayload = {
 // State shape
 // ---------------------------------------------------------------------------
 
-export interface AgentStreamState {
+interface AgentStreamState {
   events: TypedAgentEvent[];
   isStreaming: boolean;
   context: ContextData | null;

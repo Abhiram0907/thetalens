@@ -64,10 +64,6 @@ def tool(name: str, description: str):
     return decorator
 
 
-def get_all_tools() -> list[ToolSpec]:
-    return list(_TOOL_REGISTRY.values())
-
-
 def get_tool(name: str) -> ToolSpec | None:
     return _TOOL_REGISTRY.get(name)
 
@@ -393,8 +389,6 @@ async def get_news_sentiment(ticker: str, *, polygon_client: PolygonClient) -> d
             buzz = sentiment_data.get("buzz", {})
             sent = sentiment_data.get("sentiment", {})
 
-            overall_score = sent.get("bearishPercent", 0) - sent.get("bullishPercent", 0)
-            # Finnhub: bullishPercent is 0-1
             bull_pct = sent.get("bullishPercent", 0)
             bear_pct = sent.get("bearishPercent", 0)
             if bull_pct > bear_pct + 0.1:
@@ -507,7 +501,6 @@ async def get_expected_move(ticker: str, dte: int = 30,
 
     # Fetch near-term options to estimate ATM straddle
     today = date.today()
-    exp_target = today + timedelta(days=dte)
     exp_min = today + timedelta(days=max(dte - 15, 7))
     exp_max = today + timedelta(days=dte + 15)
 

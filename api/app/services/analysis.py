@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 
-from app.core.security import UPSTREAM_UNAVAILABLE
+from app.core.security import INTENT_UNRECOGNIZED, UPSTREAM_UNAVAILABLE
 from app.schemas.analysis import AnalyzeResponse, CapturedIntent, ParsedView
 from app.services.data_provenance import build_data_provenance, build_vol_view_fields
 from app.services.intent import (
@@ -24,11 +24,14 @@ async def _parse_view_from_query(
     *,
     captured: CapturedIntent | None = None,
 ) -> ParsedView:
-    view = parse_view(query)
     if captured is not None:
         slots = slots_from_captured(captured)
     else:
         slots = await extract_intent_slots(query)
+    if not slots.underlying:
+        raise HTTPException(status_code=422, detail=INTENT_UNRECOGNIZED)
+
+    view = parse_view(query)
     updates = slots_to_view_updates(slots)
     if updates:
         view = view.model_copy(update=updates)

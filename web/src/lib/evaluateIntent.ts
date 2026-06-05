@@ -14,11 +14,3 @@ export type FollowUpQuestion = {
   options?: { value: string; label: string }[];
   placeholder?: string;
 };
-
-export type IntentEvaluation = {
-  isClear: boolean;
-  confidence: number;
-  missing: FollowUpField[];
-  questions: FollowUpQuestion[];
-  summary: string;
-};

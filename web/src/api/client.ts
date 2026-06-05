@@ -161,6 +161,17 @@ export type AnalyzeResult = {
   dataProvenance: DataProvenance;
 };
 
+async function throwApiError(res: Response): Promise<never> {
+  let detail: string | undefined;
+  try {
+    const err = (await res.json()) as { detail?: string };
+    if (typeof err.detail === "string") detail = err.detail;
+  } catch {
+    /* ignore */
+  }
+  throw new ApiError(userFacingApiError(res.status, detail), res.status);
+}
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
@@ -169,14 +180,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   });
 
   if (!res.ok) {
-    let detail: string | undefined;
-    try {
-      const err = (await res.json()) as { detail?: string };
-      if (typeof err.detail === "string") detail = err.detail;
-    } catch {
-      /* ignore */
-    }
-    throw new ApiError(userFacingApiError(res.status, detail), res.status);
+    return throwApiError(res);
   }
 
   return res.json() as Promise<T>;
@@ -349,14 +353,7 @@ export async function downloadResearchExport(
   });
 
   if (!res.ok) {
-    let detail: string | undefined;
-    try {
-      const err = (await res.json()) as { detail?: string };
-      if (typeof err.detail === "string") detail = err.detail;
-    } catch {
-      /* ignore */
-    }
-    throw new ApiError(userFacingApiError(res.status, detail), res.status);
+    return throwApiError(res);
   }
 
   const blob = await res.blob();

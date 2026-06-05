@@ -1,1 +1,3 @@
-from .thesis_agent import ThesisAgent, run_thesis_agent
+from .thesis_agent import ThesisAgent
+
+__all__ = ["ThesisAgent"]

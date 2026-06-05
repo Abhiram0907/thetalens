@@ -4,40 +4,6 @@ from __future__ import annotations
 
 import re
 
-_WORD_ONES = {
-    "a": 1,
-    "one": 1,
-    "two": 2,
-    "three": 3,
-    "four": 4,
-    "five": 5,
-    "six": 6,
-    "seven": 7,
-    "eight": 8,
-    "nine": 9,
-    "ten": 10,
-}
-_WORD_TENS = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50}
-
-
-def _words_to_number(text: str) -> int | None:
-    t = text.lower().strip()
-    if t in ("grand", "g"):
-        return 1000
-    if t == "half":
-        return 500
-    if t in _WORD_ONES:
-        return _WORD_ONES[t]
-    m = re.match(r"(twenty|thirty|forty|fifty)\s*(one|two|three|four|five|six|seven|eight|nine)?", t)
-    if m:
-        base = _WORD_TENS[m.group(1)]
-        extra = _WORD_ONES.get(m.group(2), 0) if m.group(2) else 0
-        return base + extra
-    if t in _WORD_TENS:
-        return _WORD_TENS[t]
-    return None
-
-
 def parse_risk_budget_text(text: str, *, default: str = "$500") -> str:
     """Normalize any NL risk-budget phrase to a $X,XXX string."""
     raw = text.strip()

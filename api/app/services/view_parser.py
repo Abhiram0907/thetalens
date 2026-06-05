@@ -2,16 +2,7 @@ import re
 
 from app.schemas.analysis import ParsedView
 from app.services.field_parser import parse_magnitude_text, parse_risk_budget_text
-
-TICKER_RE = re.compile(r"\b([A-Z]{1,5})\b")
-_NOISE_WORDS = {
-    "I", "A", "AN", "THE", "AND", "OR", "FOR", "NOT", "TO", "IN", "ON",
-    "IS", "IT", "MY", "OF", "AT", "IF", "DO", "SO", "UP", "BY", "AM",
-    "BE", "NO", "AS", "BUT", "ALL", "MAX", "LOW", "HIGH", "OVER", "NEXT",
-    "LIKE", "MOVE", "FIND", "WANT", "LOOK", "WEEK", "RISK", "SELL",
-    "WITH", "THAT", "THIS", "WHAT", "WHEN", "WILL", "THAN", "FROM",
-    "DOWN", "LONG", "TERM",
-}
+from app.services.ticker_resolver import resolve_underlying_explicit
 
 DEFAULT_VIEW = ParsedView(
     direction="Bearish",
@@ -37,19 +28,7 @@ def _labeled(q: str, label: str) -> str | None:
 
 
 def _extract_ticker(q: str) -> str:
-    labeled = _labeled(q, "underlying")
-    if labeled:
-        sym = labeled.upper().split()[0]
-        if re.match(r"^[A-Z]{1,5}$", sym):
-            return sym
-    dollar_m = re.search(r"\$([A-Z]{1,5})\b", q)
-    if dollar_m:
-        return dollar_m.group(1)
-    for m in TICKER_RE.finditer(q):
-        sym = m.group(1)
-        if sym not in _NOISE_WORDS and len(sym) >= 2:
-            return sym
-    return "SPY"
+    return resolve_underlying_explicit(q) or DEFAULT_VIEW.underlying
 
 
 def _extract_direction(q: str) -> tuple[str, str]:

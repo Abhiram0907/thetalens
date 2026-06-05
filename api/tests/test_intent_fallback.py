@@ -13,8 +13,8 @@ class TestFallbackUnderlying:
     def test_dollar_ticker(self):
         assert _fallback_underlying("I want to trade $NVDA") == "NVDA"
 
-    def test_company_name(self):
-        assert _fallback_underlying("Apple looks weak") == "AAPL"
+    def test_company_name_needs_ai_at_inference(self):
+        assert _fallback_underlying("Apple looks weak") is None
 
     def test_labeled_field(self):
         assert _fallback_underlying("Underlying: TSLA") == "TSLA"

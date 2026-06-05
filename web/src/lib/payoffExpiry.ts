@@ -54,7 +54,7 @@ export function findBreakevens(data: PayoffPoint[]): number[] {
   return [...new Set(out.map((p) => +p.toFixed(2)))];
 }
 
-export function niceStep(range: number, targetTicks = 6): number {
+function niceStep(range: number, targetTicks = 6): number {
   if (range <= 0) return 1;
   const raw = range / targetTicks;
   const mag = 10 ** Math.floor(Math.log10(raw));

@@ -19,6 +19,9 @@ class SectorPositioning(BaseModel):
     benchmark_label: str = "SPY"
     sector_etfs: list[YtdReturnBar] = Field(default_factory=list)
     narrative: str = ""
+    sector_name: str = ""
+    industry: str = ""
+    business_blurb: str = ""
 
 
 class PeerRow(BaseModel):

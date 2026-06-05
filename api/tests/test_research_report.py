@@ -2,6 +2,8 @@
 
 from datetime import datetime, timezone
 
+import pytest
+
 from app.schemas.analysis import (
     DataProvenance,
     Leg,
@@ -150,20 +152,40 @@ def test_render_html_newsletter_poster_and_markdown():
     assert "Critical signals" not in html_out
 
 
-def test_research_brief_from_agent_enriched():
+@pytest.mark.asyncio
+async def test_research_brief_from_facts_enriched():
+    from app.schemas.market_intel import MarketIntel, SectorPositioning
+    from app.services.research_report_build import _attach_stored_research
+
+    enriched = {
+        "company_profile": {
+            "ticker": "NVDA",
+            "business_blurb": "NVIDIA builds GPUs for AI.",
+            "sector": "Technology",
+        },
+        "get_news_sentiment": {"overall_sentiment": "bullish", "headline_count": 4},
+    }
     report = build_research_report(
         parsed_view=_sample_view(),
         strategies=[_sample_strategy()],
         reasoning_steps=[],
         underlying_price=120.5,
         data_provenance=DataProvenance(spot_source="yfinance", vol_input="realized_30d"),
-        enriched_context={
-            "agent_analysis": (
-                "1. WHAT'S THE STOCK DOING?\nNVDA at $120.\n\n"
-                "6. BOTTOM LINE\nBull case holds."
-            ),
-        },
+        enriched_context=enriched,
     )
+    report = report.model_copy(
+        update={
+            "market_intel": MarketIntel(
+                sector=SectorPositioning(
+                    ticker_return_pct=22.0,
+                    benchmark_return_pct=12.0,
+                    sector_etfs=[],
+                    business_blurb="NVIDIA builds GPUs for AI.",
+                ),
+            ),
+        }
+    )
+    report = await _attach_stored_research(report, enriched)
     assert report.research_brief is not None
     assert report.research_brief.stock_doing
-    assert report.so_what_box == "Bull case holds."
+    assert report.so_what_box

@@ -56,10 +56,14 @@ def render_research_report_html(report: ResearchReport) -> str:
 
     s1_body = f'<p>{_esc(brief.stock_doing)}</p>' if brief.stock_doing else "<p>—</p>"
     s1 = _section("What's the stock doing?", s1_body, chart_html)
-    s2 = _section(
-        "What's the mood?",
-        f'<p>{_esc(brief.mood)}</p>' if brief.mood else "<p>—</p>",
-    )
+    mood_body = f'<p>{_esc(brief.mood)}</p>' if brief.mood else "<p>—</p>"
+    if report.sentiment_headlines:
+        headline_lis: list[str] = []
+        for h in report.sentiment_headlines[:3]:
+            src = f' <span class="headline-src">({_esc(h.source)})</span>' if h.source else ""
+            headline_lis.append(f"<li>{_esc(h.title)}{src}</li>")
+        mood_body += f'<ul class="headline-list">{"".join(headline_lis)}</ul>'
+    s2 = _section("What's the mood?", mood_body)
     s3 = _section(
         "What could move it?",
         f'<p>{_esc(brief.could_move)}</p>' if brief.could_move else "<p>—</p>",
@@ -246,6 +250,20 @@ def render_research_report_html(report: ResearchReport) -> str:
       background: var(--paper-deep);
     }}
     .thesis-cons li {{ border-left-color: var(--bear); }}
+    .headline-list {{
+      list-style: none;
+      margin: 12px 0 0;
+      padding: 0;
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-size: 0.98rem;
+    }}
+    .headline-list li {{
+      padding: 8px 10px;
+      margin-bottom: 6px;
+      background: var(--paper-deep);
+      border-left: 3px solid var(--gold);
+    }}
+    .headline-src {{ color: var(--muted); font-size: 0.85em; }}
     .sector-chart-wrap {{ margin: 12px 0 4px; }}
     .sector-bars-svg {{ max-width: 100%; height: auto; display: block; }}
     .so-what-box {{

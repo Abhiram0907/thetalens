@@ -14,29 +14,31 @@ from app.schemas.analysis import (
 from app.schemas.research_report import ResearchReport
 from app.services.export_detail import build_export_shareable_line
 from app.services.market_intel import gather_market_intel
-from app.services.research_brief import research_brief_from_agent_text
+from app.services.research_brief import sanitize_agent_brief_text
+from app.services.research_compose import compose_research_brief_enriched
+from app.services.research_facts import gather_research_facts
 from app.services.research_report import build_research_report
 
 
 def _agent_text(report: ResearchReport, enriched_context: dict[str, Any] | None) -> str:
     enriched = enriched_context or {}
-    return (enriched.get("agent_analysis") or report.agent_narrative or "").strip()
+    raw = (enriched.get("agent_analysis") or report.agent_narrative or "").strip()
+    return sanitize_agent_brief_text(raw)
 
 
-def _attach_stored_research(
+async def _attach_stored_research(
     report: ResearchReport,
     enriched_context: dict[str, Any] | None,
 ) -> ResearchReport:
-    """Parse agent final analysis into export brief — no extra LLM calls."""
+    """Compose export brief from structured facts (primary path)."""
+    facts = gather_research_facts(report, report.market_intel, enriched_context)
+    brief = await compose_research_brief_enriched(facts)
     agent_text = _agent_text(report, enriched_context)
-    brief = report.research_brief
-    if agent_text and (brief is None or not brief.stock_doing):
-        brief = research_brief_from_agent_text(agent_text, report, report.market_intel)
-    bottom = (brief.bottom_line if brief else "") or report.so_what_box or ""
+    bottom = brief.bottom_line or None
     return report.model_copy(
         update={
             "research_brief": brief,
-            "so_what_box": bottom or None,
+            "so_what_box": bottom,
             "shareable_line": build_export_shareable_line(report),
             "agent_narrative": agent_text or report.agent_narrative,
         }
@@ -70,22 +72,22 @@ async def build_research_report_enriched(
         enriched_context,
     )
     report = report.model_copy(update={"market_intel": intel})
-    return _attach_stored_research(report, enriched_context)
+    return await _attach_stored_research(report, enriched_context)
 
 
 async def ensure_report_market_intel(
     report: ResearchReport,
     enriched_context: dict[str, Any] | None = None,
 ) -> ResearchReport:
-    """Fill market intel on export when missing; reuse stored agent research."""
+    """Fill market intel on export when missing; compose brief from facts."""
     if report.market_intel is not None:
-        return _attach_stored_research(report, enriched_context)
+        return await _attach_stored_research(report, enriched_context)
     intel = await gather_market_intel(
         report.parsed_view.underlying,
         report.parsed_view,
         enriched_context,
     )
-    return _attach_stored_research(
+    return await _attach_stored_research(
         report.model_copy(update={"market_intel": intel}),
         enriched_context,
     )

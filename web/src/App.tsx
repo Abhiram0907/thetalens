@@ -6,7 +6,9 @@ import {
   type CSSProperties,
 } from "react";
 import { AgentView } from "./components/agent";
+import { AgentPhaseLayout } from "./components/AgentPhaseLayout";
 import { AppShell } from "./components/AppShell";
+import { ThetaLensLogoButton } from "./components/ThetaLensLogoButton";
 import { FinancialDisclaimer } from "./components/FinancialDisclaimer";
 import { ReasoningPanel } from "./components/ReasoningPanel";
 import { DataProvenanceBanner } from "./components/DataProvenanceBanner";
@@ -31,7 +33,7 @@ import {
 import { ScannerView } from "./components/ScannerView";
 import type { AgentBuildPayload } from "./hooks/useAgentStream";
 import { DEMO_QUERY, VAGUE_DEMO_QUERY, SCANNER_DEMO_QUERY } from "./data/mockData";
-import { enrichStrategies } from "./lib/enrichStrategies";
+import { applyAnalysisResult } from "./lib/applyAnalysisResult";
 import { userFacingNetworkError } from "./lib/safeErrors";
 import type { DataProvenance, ParsedView, ReasoningStep, Strategy } from "./types";
 
@@ -139,13 +141,18 @@ export default function App() {
 
       try {
         const result = await fetchAnalyze(resolvedQuery, intent ?? capturedIntent);
-        const enriched = enrichStrategies(result.strategies, result.underlyingPrice);
-        setParsedView(result.parsedView);
-        setDataProvenance(result.dataProvenance);
-        setStrategies(enriched);
-        setReasoningSteps(result.reasoningSteps);
-        setResearchReport(null);
-        revealStrategies(enriched, result.reasoningSteps);
+        applyAnalysisResult(
+          result,
+          {
+            setParsedView,
+            setDataProvenance,
+            setStrategies,
+            setReasoningSteps,
+            setResearchReport,
+          },
+          revealStrategies,
+          null,
+        );
       } catch (err) {
         const message =
           err instanceof ApiError ? err.message : userFacingNetworkError();
@@ -174,6 +181,12 @@ export default function App() {
 
       try {
         const evaluation = await fetchIntent(q);
+
+        if (!evaluation.isClear || !evaluation.captured.underlying) {
+          setError(evaluation.summary);
+          setPhase("input");
+          return;
+        }
 
         setQuery(q);
         setCapturedIntent(evaluation.captured);
@@ -216,13 +229,18 @@ export default function App() {
             underlying_price: buildPayload.underlying_price ?? buildPayload.parsed_view.underlying_price,
             data_provenance: buildPayload.data_provenance,
           });
-          const enriched = enrichStrategies(result.strategies, result.underlyingPrice);
-          setParsedView(result.parsedView);
-          setDataProvenance(result.dataProvenance);
-          setStrategies(enriched);
-          setReasoningSteps(result.reasoningSteps);
-          setResearchReport(buildPayload.research_report ?? null);
-          revealStrategies(enriched, result.reasoningSteps);
+          applyAnalysisResult(
+            result,
+            {
+              setParsedView,
+              setDataProvenance,
+              setStrategies,
+              setReasoningSteps,
+              setResearchReport,
+            },
+            revealStrategies,
+            (buildPayload.research_report as Record<string, unknown> | undefined) ?? null,
+          );
           return;
         } catch {
           /* fall through to legacy analyze */
@@ -640,55 +658,11 @@ export default function App() {
   if (isResearching) {
     return (
       <AppShell>
-      <div className="agent-phase-wrapper">
-        <header className="agent-phase-header">
-          <button
-            type="button"
-            onClick={resetToInput}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              padding: 0,
-            }}
-            aria-label="New view"
-          >
-            <span
-              style={{
-                fontFamily: "var(--serif)",
-                fontSize: 24,
-                fontWeight: 300,
-                color: ACCENT_COLOR,
-              }}
-            >
-              θ
-            </span>
-            <span
-              style={{
-                fontFamily: "var(--serif)",
-                fontSize: 16,
-                fontWeight: 400,
-                color: "var(--text-1)",
-                letterSpacing: "0.08em",
-              }}
-            >
-              thetalens
-            </span>
-          </button>
-          <span
-            style={{
-              fontSize: 11,
-              fontFamily: "var(--mono)",
-              color: "var(--text-3)",
-            }}
-          >
-            Research phase
-          </span>
-        </header>
-        <div className="agent-phase-body">
+        <AgentPhaseLayout
+          phaseLabel="Research phase"
+          accentColor={ACCENT_COLOR}
+          onReset={resetToInput}
+        >
           <AgentView
             parsedIntent={{
               underlying: capturedIntent?.underlying ?? undefined,
@@ -702,8 +676,7 @@ export default function App() {
             accentColor={ACCENT_COLOR}
             autoStart
           />
-        </div>
-      </div>
+        </AgentPhaseLayout>
       </AppShell>
     );
   }
@@ -711,63 +684,18 @@ export default function App() {
   if (phase === "scanning") {
     return (
       <AppShell>
-      <div className="agent-phase-wrapper">
-        <header className="agent-phase-header">
-          <button
-            type="button"
-            onClick={resetToInput}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              padding: 0,
-            }}
-            aria-label="New view"
-          >
-            <span
-              style={{
-                fontFamily: "var(--serif)",
-                fontSize: 24,
-                fontWeight: 300,
-                color: ACCENT_COLOR,
-              }}
-            >
-              θ
-            </span>
-            <span
-              style={{
-                fontFamily: "var(--serif)",
-                fontSize: 16,
-                fontWeight: 400,
-                color: "var(--text-1)",
-                letterSpacing: "0.08em",
-              }}
-            >
-              thetalens
-            </span>
-          </button>
-          <span
-            style={{
-              fontSize: 11,
-              fontFamily: "var(--mono)",
-              color: "var(--text-3)",
-            }}
-          >
-            Scanner mode
-          </span>
-        </header>
-        <div className="agent-phase-body">
+        <AgentPhaseLayout
+          phaseLabel="Scanner mode"
+          accentColor={ACCENT_COLOR}
+          onReset={resetToInput}
+        >
           <ScannerView
-            seedTicker={capturedIntent?.underlying ?? "SPY"}
+            seedTicker={capturedIntent!.underlying!}
             onBuildStrategies={handleScannerBuild}
             onBack={resetToInput}
             accentColor={ACCENT_COLOR}
           />
-        </div>
-      </div>
+        </AgentPhaseLayout>
       </AppShell>
     );
   }
@@ -781,42 +709,7 @@ export default function App() {
     <div className="analysis-wrapper">
       <header className="analysis-header" style={analysisStyles.header}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button
-            type="button"
-            onClick={resetToInput}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              padding: 0,
-            }}
-            aria-label="New view"
-          >
-            <span
-              style={{
-                fontFamily: "var(--serif)",
-                fontSize: 24,
-                fontWeight: 300,
-                color: ACCENT_COLOR,
-              }}
-            >
-              θ
-            </span>
-            <span
-              style={{
-                fontFamily: "var(--serif)",
-                fontSize: 16,
-                fontWeight: 400,
-                color: "var(--text-1)",
-                letterSpacing: "0.08em",
-              }}
-            >
-              thetalens
-            </span>
-          </button>
+          <ThetaLensLogoButton accentColor={ACCENT_COLOR} onClick={resetToInput} />
         </div>
         <div
           className="analysis-header-meta"

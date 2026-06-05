@@ -3,24 +3,13 @@ import re
 from app.llm import parse_intent_slots
 from app.services.field_parser import parse_magnitude_text, parse_risk_budget_text
 from app.services.strategy_builder import parse_horizon_days
+from app.services.ticker_resolver import resolve_underlying, resolve_underlying_ai
 from app.schemas.intent import IntentSlots
+from app.core.security import INTENT_UNRECOGNIZED
 from app.schemas.analysis import (
     CapturedIntent,
     IntentResponse,
 )
-
-_NOISE_WORDS = {
-    "I", "A", "AN", "THE", "AND", "OR", "FOR", "NOT", "TO", "IN", "ON",
-    "IS", "IT", "MY", "OF", "AT", "IF", "DO", "SO", "UP", "BY", "AM",
-    "BE", "NO", "AS", "BUT", "ALL", "CAN", "HAD", "HAS", "HER", "HIS",
-    "HOW", "ITS", "MAY", "NEW", "NOW", "OLD", "OUR", "OUT", "OWN",
-    "SAY", "SHE", "TOO", "USE", "WAY", "WHO", "DAY", "GET", "HIM",
-    "LET", "PUT", "RUN", "SET", "TRY", "TWO", "WIN", "MAX", "LOW",
-    "HIGH", "OVER", "NEXT", "LIKE", "MOVE", "FIND", "WANT", "LOOK",
-    "WEEK", "RISK", "SELL", "WITH", "THAT", "THIS", "WHAT", "WHEN",
-    "WILL", "THAN", "FROM", "THEM", "SOME", "JUST", "VERY", "ABOUT",
-    "DOWN", "LONG", "TERM",
-}
 
 def slots_to_view_updates(slots: IntentSlots) -> dict:
     """Map intent slots to ParsedView fields (shared by analyze path)."""
@@ -59,13 +48,24 @@ def slots_from_captured(captured: CapturedIntent) -> IntentSlots:
     )
 
 
+async def _fill_underlying(slots: IntentSlots, query: str) -> IntentSlots:
+    if slots.underlying:
+        return slots
+    resolved = await resolve_underlying_ai(query)
+    if resolved:
+        return slots.model_copy(update={"underlying": resolved})
+    return slots
+
+
 async def extract_intent_slots(query: str) -> IntentSlots:
-    """Single LLM intent extraction (with regex fallback)."""
+    """LLM intent extraction with AI ticker resolution and regex fallback."""
     q = query.strip()
     try:
-        return await parse_intent_slots(q)
+        slots = await parse_intent_slots(q)
     except Exception:
-        return _fallback_slots(q)
+        slots = _fallback_slots(q)
+        return await _fill_underlying(slots, q)
+    return await _fill_underlying(slots, q)
 
 
 def _captured_from_slots(slots: IntentSlots) -> CapturedIntent:
@@ -85,31 +85,7 @@ def _labeled(q: str, label: str) -> str | None:
 
 
 def _fallback_underlying(q: str) -> str | None:
-    labeled = _labeled(q, "underlying")
-    if labeled:
-        sym = labeled.upper().split()[0].replace("$", "")
-        if re.fullmatch(r"[A-Z]{1,5}", sym):
-            return sym
-    company_map = {
-        "nvidia": "NVDA",
-        "apple": "AAPL",
-        "tesla": "TSLA",
-        "microsoft": "MSFT",
-        "amazon": "AMZN",
-        "meta": "META",
-        "facebook": "META",
-    }
-    lower = q.lower()
-    for name, sym in company_map.items():
-        if name in lower:
-            return sym
-    for m in re.finditer(r"\$([A-Z]{1,5})\b", q):
-        return m.group(1)
-    for m in re.finditer(r"\b([A-Z]{1,5})\b", q):
-        sym = m.group(1)
-        if sym not in _NOISE_WORDS and len(sym) >= 2:
-            return sym
-    return None
+    return resolve_underlying(q)
 
 
 def _fallback_direction(q: str) -> str | None:
@@ -143,6 +119,8 @@ def _fallback_risk_budget(q: str) -> str | None:
     labeled = _labeled(q, "risk budget") or _labeled(q, "risk_budget")
     if labeled:
         return parse_risk_budget_text(labeled)
+    if re.search(r"\bno\s+risk\b", q, re.I):
+        return None
     if re.search(r"\b(risk|budget|lose|max loss|capital)\b|\$", q, re.I):
         parsed = parse_risk_budget_text(q, default="")
         return parsed or None
@@ -172,9 +150,19 @@ def _fallback_slots(query: str) -> IntentSlots:
 
 async def evaluate_intent(query: str) -> IntentResponse:
     slots = await extract_intent_slots(query)
-
     captured = _captured_from_slots(slots)
-    missing: list[str] = []
+
+    if not captured.underlying:
+        return IntentResponse(
+            is_clear=False,
+            confidence=0,
+            captured=captured,
+            missing=["underlying"],
+            questions=[],
+            summary=INTENT_UNRECOGNIZED,
+            clarify_reasoning_steps=[],
+        )
+
     confidence = max(slots.confidence, 70)
     summary = "Intent retrieved; the agent will infer direction and fill gaps from market data."
 
@@ -182,7 +170,7 @@ async def evaluate_intent(query: str) -> IntentResponse:
         is_clear=True,
         confidence=confidence,
         captured=captured,
-        missing=missing,
+        missing=[],
         questions=[],
         summary=summary,
         clarify_reasoning_steps=[],

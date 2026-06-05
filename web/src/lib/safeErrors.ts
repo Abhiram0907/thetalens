@@ -4,8 +4,9 @@ const GENERIC = "Something went wrong. Please try again.";
 const UNAVAILABLE = "Service temporarily unavailable. Please try again later.";
 const RATE_LIMITED = "Too many requests. Please wait a moment and try again.";
 
-export function userFacingApiError(status: number, _rawDetail?: string): string {
+export function userFacingApiError(status: number, rawDetail?: string): string {
   if (status === 429) return RATE_LIMITED;
+  if (status === 422 && rawDetail?.trim()) return rawDetail.trim();
   if (status >= 500) return UNAVAILABLE;
   if (status === 503) return UNAVAILABLE;
   if (status === 502) return UNAVAILABLE;

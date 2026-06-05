@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from app.schemas.analysis import CapturedIntent, ParsedView, ReasoningStep, Strategy
+from app.schemas.analysis import ParsedView, ReasoningStep, Strategy
 from app.services.market_data import MarketSnapshot
 from app.services.strategy_builder import parse_risk_budget
 
@@ -21,64 +21,6 @@ def _sentiment_aligns(news: dict, view: ParsedView) -> bool:
     if direction == "bearish":
         return sent in ("bearish", "negative")
     return True
-
-
-def _captured_summary(captured: CapturedIntent) -> str:
-    parts: list[str] = []
-    if captured.underlying:
-        parts.append(captured.underlying)
-    if captured.direction:
-        parts.append(captured.direction)
-    if captured.magnitude:
-        parts.append(captured.magnitude)
-    if captured.horizon:
-        parts.append(captured.horizon)
-    if captured.risk_budget:
-        parts.append(captured.risk_budget)
-    return " · ".join(parts) if parts else "partial view"
-
-
-def build_clarify_reasoning_steps(
-    captured: CapturedIntent,
-    missing: list[str],
-    *,
-    question_templates: dict,
-) -> list[ReasoningStep]:
-    steps = [_step("View Parser", "Parsing natural language view…", 200)]
-
-    summary = _captured_summary(captured)
-    if summary != "partial view":
-        steps.append(
-            _step("View Parser", f"Extracted from query: {summary}", 750),
-        )
-
-    if missing:
-        need = ", ".join(question_templates[f]["label"].lower() for f in missing)
-        steps.append(
-            _step(
-                "View Parser",
-                f"Intent extraction noted missing {need}; agent will infer or default downstream",
-                1300,
-            ),
-        )
-        steps.append(
-            _step(
-                "View Parser",
-                "Proceeding without user clarification…",
-                1800,
-            ),
-        )
-    else:
-        sym = captured.underlying or "symbol"
-        steps.append(
-            _step(
-                "View Parser",
-                f"Intent complete for {sym} — proceeding to structure",
-                1200,
-            ),
-        )
-
-    return steps
 
 
 def _chain_summary(snapshot: MarketSnapshot) -> str:

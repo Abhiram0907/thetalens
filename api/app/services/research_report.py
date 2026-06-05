@@ -20,7 +20,7 @@ from app.services.export_detail import (
     extract_sentiment_headlines,
     format_data_as_of_display,
 )
-from app.services.research_brief import research_brief_from_agent_text
+from app.schemas.research_brief import ResearchBrief
 
 
 def _fmt_money(value: float | str) -> str:
@@ -365,11 +365,9 @@ def build_research_report(
         expected_move_dollars=em.get("expected_move_dollar"),
         sentiment_headlines=extract_sentiment_headlines(enriched),
     )
-    brief = research_brief_from_agent_text(agent_narrative or "", draft, None)
     return draft.model_copy(
         update={
-            "research_brief": brief,
-            "so_what_box": brief.bottom_line or None,
+            "research_brief": ResearchBrief(),
             "shareable_line": build_export_shareable_line(draft),
         }
     )

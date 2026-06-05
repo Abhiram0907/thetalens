@@ -19,9 +19,12 @@ _REDACT_PATTERNS: tuple[re.Pattern[str], ...] = (
 )
 
 GENERIC_ERROR = "Something went wrong. Please try again."
-SERVICE_UNAVAILABLE = "Service temporarily unavailable. Please try again later."
 UPSTREAM_UNAVAILABLE = "Market data service is temporarily unavailable."
 LLM_UNAVAILABLE = "Research agent is temporarily unavailable. Please try again."
+INTENT_UNRECOGNIZED = (
+    "Unable to recognize the underlying for this thesis. "
+    "Include a US stock or ETF ticker (e.g. NVDA, CRWV) or a clear company name."
+)
 
 
 def redact_secrets(text: str) -> str:

@@ -12,3 +12,7 @@ class ResearchBrief(BaseModel):
     working_for: list[str] = Field(default_factory=list)
     working_against: list[str] = Field(default_factory=list)
     bottom_line: str = ""
+
+
+class BottomLineResult(BaseModel):
+    bottom_line: str = ""
