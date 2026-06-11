@@ -5,6 +5,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 import { AgentView } from "./components/agent";
 import { AgentPhaseLayout } from "./components/AgentPhaseLayout";
 import { AppShell } from "./components/AppShell";
@@ -418,6 +419,8 @@ export default function App() {
 
   if (isInputFlow) {
     return (
+      <>
+      <SpeedInsights />
       <AppShell>
       <div className="input-phase">
         <div
@@ -652,11 +655,14 @@ export default function App() {
         </div>
       </div>
       </AppShell>
+      </>
     );
   }
 
   if (isResearching) {
     return (
+      <>
+      <SpeedInsights />
       <AppShell>
         <AgentPhaseLayout
           phaseLabel="Research phase"
@@ -678,11 +684,14 @@ export default function App() {
           />
         </AgentPhaseLayout>
       </AppShell>
+      </>
     );
   }
 
   if (phase === "scanning") {
     return (
+      <>
+      <SpeedInsights />
       <AppShell>
         <AgentPhaseLayout
           phaseLabel="Scanner mode"
@@ -697,6 +706,7 @@ export default function App() {
           />
         </AgentPhaseLayout>
       </AppShell>
+      </>
     );
   }
 
@@ -705,6 +715,8 @@ export default function App() {
   }
 
   return (
+    <>
+    <SpeedInsights />
     <AppShell>
     <div className="analysis-wrapper">
       <header className="analysis-header" style={analysisStyles.header}>
@@ -908,6 +920,7 @@ export default function App() {
       </div>
     </div>
     </AppShell>
+    </>
   );
 }
 
